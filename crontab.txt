@@ -1,0 +1,3 @@
+*/5 * * * * python3 /home/ubuntu/eve-trade-forecaster-utilities/crest.py evetradeforecaster orders_c98a169b2e36 aggregates_03f51ef8644c >/home/ubuntu/eve-trade-forecaster-utilities/crest.log 2>&1
+
+0 * * * * python3 /home/ubuntu/eve-trade-forecaster-utilities/profit.py evetradeforecaster user_settings_664c29459b15 profit_chart_29cc89e8d92a profit_top_items_d07bb85eab8d >/home/ubuntu/eve-trade-forecaster-utilities/profit.log 2>&1
