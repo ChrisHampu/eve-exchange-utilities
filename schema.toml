@@ -1,0 +1,53 @@
+# This is a TOML document
+
+[groups.admin]
+
+[groups.admin.rules.carte_blanche]
+template = "any()"
+
+[groups.default]
+
+[groups.default.rules.read_current_user]
+template = "collection('users').find({id: userId()})"
+
+[groups.default.rules.read_aggregates]
+template = "collection('aggregates').anyRead()"
+
+[groups.default.rules.write_aggregates]
+template = "collection('aggregates').anyWrite()"
+
+[groups.default.rules.read_marketorders]
+template = "collection('orders').anyRead()"
+
+[groups.default.rules.write_marketorders]
+template = "collection('orders').anyWrite()"
+
+[groups.default.rules.read_settings]
+template = "collection('user_settings').anyRead()"
+
+[groups.default.rules.write_settings]
+template = "collection('user_settings').anyWrite()"
+
+[groups.default.rules.read_notifications]
+template = "collection('notifications').anyRead()"
+
+[groups.default.rules.write_notifications]
+template = "collection('notifications').anyWrite()"
+
+[groups.default.rules.read_subscription]
+template = "collection('subscription').anyRead()"
+
+[groups.default.rules.write_subscription]
+template = "collection('subscription').anyWrite()"
+
+[groups.default.rules.read_profit_chart]
+template = "collection('profit_chart').anyRead()"
+
+[groups.default.rules.write_profit_chart]
+template = "collection('profit_chart').anyWrite()"
+
+[groups.default.rules.read_profit_top_items]
+template = "collection('profit_top_items').anyRead()"
+
+[groups.default.rules.write_profit_top_items]
+template = "collection('profit_top_items').anyWrite()"
