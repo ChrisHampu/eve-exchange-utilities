@@ -70,7 +70,9 @@ if __name__ == '__main__':
 
   print("Working on %s pages" % pageCount)
 
-  workers = max(multiprocessing.cpu_count(), pageCount)
+  workers = min(multiprocessing.cpu_count(), pageCount)
+
+  print("Executing using %s workers" % workers)
 
   work = split_list(range(2,pageCount+1), workers)
 
