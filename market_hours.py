@@ -22,7 +22,7 @@ if __name__ == '__main__':
 
   aggregates = (r.table(AggregateTable)
   .filter(lambda doc:
-    doc["frequency"].eq["minutes"] & r.now().sub(doc["time"]).lt(3600)
+    doc["frequency"].eq("minutes") & r.now().sub(doc["time"]).lt(3600)
   )
   .group("type")
   .map(lambda doc: {
