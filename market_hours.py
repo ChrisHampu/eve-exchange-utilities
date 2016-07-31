@@ -21,9 +21,9 @@ if __name__ == '__main__':
   print("Starting hourly aggregation")
 
   aggregates = (r.table(AggregateTable)
-  #.filter(function(doc) {
-  #  return doc("frequency").eq("minutes").and(r.now().sub(doc("time")).lt(3600*4))
-  #})
+  .filter(function(doc) {
+    return doc("frequency").eq("minutes").and(r.now().sub(doc("time")).lt(3600))
+  })
   .group("type")
   .map(lambda doc: {
     'sellAvg': doc["sellAvg"],
