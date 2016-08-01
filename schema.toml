@@ -16,6 +16,12 @@ template = "collection('aggregates').anyRead()"
 [groups.default.rules.write_aggregates]
 template = "collection('aggregates').anyWrite()"
 
+[groups.default.rules.read_aggregates_hourly]
+template = "collection('aggregates_hourly').anyRead()"
+
+[groups.default.rules.write_aggregates_hourly]
+template = "collection('aggregates_hourly').anyWrite()"
+
 [groups.default.rules.read_marketorders]
 template = "collection('orders').anyRead()"
 
