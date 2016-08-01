@@ -20,6 +20,7 @@ PrintJSON = False
 HorizonDB = sys.argv[1]
 OrdersTable = sys.argv[2]
 AggregateTable = sys.argv[3]
+HourlyTable = sys.argv[4]
 
 def split_list(alist, wanted_parts=1):
   length = len(alist)
@@ -42,7 +43,7 @@ def loadPages(pages):
 
 if __name__ == '__main__':
 
-  agg_conn, horizon_conn, start  =  (r.connect(db=HorizonDB), r.connect(db=HorizonDB), time.perf_counter())
+  agg_conn, horizon_conn, start, useHourly  =  (r.connect(db=HorizonDB), r.connect(db=HorizonDB), time.perf_counter(), False)
 
   dt = datetime.now()
 
@@ -57,6 +58,9 @@ if __name__ == '__main__':
     r.db('market').table('orders').delete({}).run(conn)
 
     print("Stale orders flushed")
+
+  if (tt.tm_min == 0):
+    useHourly = True
 
   req = requests.get("https://crest-tq.eveonline.com/market/10000002/orders/all/")
 
@@ -177,7 +181,6 @@ if __name__ == '__main__':
   .ungroup()
   .map( lambda group: {
     '$hz_v$': 0,
-    'frequency': "minutes",
     'time': r.now(),
     'type': group["group"],
     'sellAvg': group["reduction"][1]["sellavg"].default(0),
@@ -200,6 +203,9 @@ if __name__ == '__main__':
   data = aggregates
 
   r.table(AggregateTable).insert(data, return_changes=False).run(horizon_conn)
+
+  if useHourly == True:
+    r.table(HourlyTable).insert(data, return_changes=False).run(horizon_conn)
 
   print("Aggregation finished in %s seconds" % (time.perf_counter() - aggTimer))
   print("Total time taken is %s seconds" % (time.perf_counter() - start))
