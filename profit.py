@@ -161,7 +161,7 @@ if __name__ == '__main__':
 
   settings = r.table(SettingsTable).run(horizon_conn)
 
-  userList = [user['userID'] for user in settings if user['eveApiKey'] is not None]
+  userList = [user['userID'] for user in settings if user['eveApiKey'] is not None and len(user['eveApiKey']['keyID']) > 0]
 
   top_items = r.table(TopitemsTable).get_all(userList, index='userID').run(horizon_conn)
 
