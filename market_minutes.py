@@ -96,7 +96,7 @@ if __name__ == '__main__':
   aggTimer = time.perf_counter()
 
   aggregates = (r.table(OrdersTable)
-  .filter( lambda doc: (doc['buy'] == True) & (doc['price'] > 1 ) )
+  .filter( lambda doc: (doc['buy'] == True) & (doc['price'] > 1 ) & ((doc['stationID'] == 60003760) | (doc['stationID'] > 1000000000000)) )
   .group("type")
   .map( lambda doc: { 
     'price': doc["price"], 'volume': doc["volume"] 
