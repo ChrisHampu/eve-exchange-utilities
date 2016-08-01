@@ -27,8 +27,11 @@ def split_list(alist, wanted_parts=1):
   return [ alist[i*length // wanted_parts: (i+1)*length // wanted_parts]
       for i in range(wanted_parts) ]
 
+def getConnection():
+  return r.connect(db=HorizonDB)
+
 def loadPages(pages):
-  horizon_conn, inserted = (r.connect(db=HorizonDB), 0)
+  inserted = 0
 
   for i in pages:
     req = requests.get("https://crest-tq.eveonline.com/market/10000002/orders/all/?page=%s" % i)
@@ -36,14 +39,14 @@ def loadPages(pages):
     if 'items' not in j:
       continue
     for item in j['items']: item['$hz_v$'] = 0
-    r.table(OrdersTable).insert(j['items'], durability="soft", return_changes=False, conflict="replace").run(horizon_conn)
+    r.table(OrdersTable).insert(j['items'], durability="soft", return_changes=False, conflict="replace").run(getConnection())
     inserted += len(j['items'])
 
   return inserted
 
 if __name__ == '__main__':
 
-  agg_conn, horizon_conn, start, useHourly  =  (r.connect(db=HorizonDB), r.connect(db=HorizonDB), time.perf_counter(), False)
+  start, useHourly  =  (time.perf_counter(), False)
 
   dt = datetime.now()
 
@@ -51,15 +54,16 @@ if __name__ == '__main__':
 
   tt = dt.timetuple()
 
-  if (tt.tm_hour == 13 and tt.tm_min == 55):
+  if (tt.tm_min == 55):
 
     print("Flushing stale market orders")
 
-    r.db('market').table('orders').delete({}).run(conn)
+    r.db('market').table('orders').delete({}).run(getConnection())
 
     print("Stale orders flushed")
 
-  if (tt.tm_min == 0):
+  if (tt.tm_min == 00):
+    print("Writing hourly data")
     useHourly = True
 
   req = requests.get("https://crest-tq.eveonline.com/market/10000002/orders/all/")
@@ -70,7 +74,7 @@ if __name__ == '__main__':
 
   for item in js['items']: item['$hz_v$'] = 0
 
-  r.table(OrdersTable).insert(js['items'], durability="soft", return_changes=False, conflict="replace").run(horizon_conn)
+  r.table(OrdersTable).insert(js['items'], durability="soft", return_changes=False, conflict="replace").run(getConnection())
 
   print("Working on %s pages" % pageCount)
 
@@ -197,15 +201,15 @@ if __name__ == '__main__':
     'spreadValue': group["reduction"][1]["fifthPercentile"].default(1).div(100).mul(r.expr(100).sub(group["reduction"][0]["buyFifthPercentile"].default(1).div(group["reduction"][1]["sellFifthPercentile"].default(1)).mul(r.expr(100)))),
     'tradeValue': group["reduction"][0]["volume"].default(0).mul(group["reduction"][1]["sellFifthPercentile"].default(1).div(100).mul(r.expr(100).sub(group["reduction"][0]["buyFifthPercentile"].default(1).div(group["reduction"][1]["sellFifthPercentile"].default(1)).mul(r.expr(100)))))
   })
-  .run(agg_conn, array_limit=300000, profile=Profile)
+  .run(getConnection(), array_limit=300000, profile=Profile)
   )
 
   data = aggregates
 
-  r.table(AggregateTable).insert(data, return_changes=False).run(horizon_conn)
+  r.table(AggregateTable).insert(data, return_changes=False).run(getConnection())
 
   if useHourly == True:
-    r.table(HourlyTable).insert(data, return_changes=False).run(horizon_conn)
+    r.table(HourlyTable).insert(data, return_changes=False).run(getConnection())
 
   print("Aggregation finished in %s seconds" % (time.perf_counter() - aggTimer))
   print("Total time taken is %s seconds" % (time.perf_counter() - start))
