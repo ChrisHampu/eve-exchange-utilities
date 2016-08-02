@@ -169,7 +169,7 @@ if __name__ == '__main__':
 
     doc = next((x for x in top_items if x['userID'] == charID), None)
    #sales = next((x for x in salesResults if x['userID'] == charID), None)
-    sales = salesResults[charID] if salesResults[charID] is not None else None
+    sales = salesResults[charID] if charID in salesResults else None
 
     if sales is None:
       print("Failed to match results for user %s" % charID)
