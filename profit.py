@@ -88,7 +88,7 @@ if __name__ == '__main__':
   now = datetime.now(r.make_timezone('00:00'))
   nowtuple = now.utctimetuple()
 
-  dt = datetime.utcnow() - timedelta(hours=1)
+  dt = datetime.utcnow() - timedelta(hours=12)
   offset = dt.utctimetuple()
 
   settings = r.table(SettingsTable).run(horizon_conn)
@@ -163,18 +163,20 @@ if __name__ == '__main__':
 
   settings = r.table(SettingsTable).run(horizon_conn)
 
-  userList = [user['userID'] for user in settings if user['eveApiKey'] is not None and len(user['eveApiKey']['keyID']) > 0]
+  userList = [[user['userID']] for user in settings if user['eveApiKey'] is not None and len(user['eveApiKey']['keyID']) > 0]
 
-  top_items = r.table(TopitemsTable).get_all(userList, index='userID').run(horizon_conn)
+  top_items = list(r.table(TopitemsTable).get_all(r.args(userList), index='userID').run(horizon_conn))
 
   for charID in userList:
 
-    doc = next((x for x in top_items if x['userID'] == charID), None)
-   #sales = next((x for x in salesResults if x['userID'] == charID), None)
-    sales = salesResults[charID] if charID in salesResults else None
+    _charID = charID[0]
+
+    doc = next((x for x in top_items if x['userID'] == _charID), None)
+
+    sales = salesResults[_charID] if _charID in salesResults else None
 
     if sales is None:
-      print("Failed to match results for user %s" % charID)
+      print("Failed to match results for user %s" % _charID)
       continue
 
     data = [{key:row[key] for key in ('totalProfit', 'quantity', 'avgPerUnit', 'type', 'name')} for row in sales]
@@ -182,11 +184,10 @@ if __name__ == '__main__':
     # create new top list
     if doc is None:
       
-      r.table(TopitemsTable).insert({'$hz_v$': 0, 'userID': charID, 'items': data}).run(horizon_conn)
+      r.table(TopitemsTable).insert({'$hz_v$': 0, 'userID': _charID, 'items': data}).run(horizon_conn)
 
     # modify/add to existing top list
     else:
-      
       for item in data:
 
         find = [(i, j) for i, j in enumerate(doc['items']) if j['type'] == item['type']]
@@ -203,7 +204,7 @@ if __name__ == '__main__':
 
           doc['items'][index] = top
 
-      r.table(TopitemsTable).replace(doc).run(horizon_conn)
+      r.table(TopitemsTable).update(doc).run(horizon_conn)
 '''
 overall profit calc
   
