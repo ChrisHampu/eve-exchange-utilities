@@ -88,7 +88,7 @@ if __name__ == '__main__':
   now = datetime.now(r.make_timezone('00:00'))
   nowtuple = now.utctimetuple()
 
-  dt = datetime.utcnow() - timedelta(hours=12)
+  dt = datetime.utcnow() - timedelta(hours=1)
   offset = dt.utctimetuple()
 
   settings = r.table(SettingsTable).run(horizon_conn)
