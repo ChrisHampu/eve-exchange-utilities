@@ -83,6 +83,8 @@ if __name__ == '__main__':
 
   horizon_conn, start  =  (r.connect(db=HorizonDB), time.perf_counter())
 
+  print("Executing at %s" %  datetime.now())
+
   now = datetime.now(r.make_timezone('00:00'))
   nowtuple = now.utctimetuple()
 
