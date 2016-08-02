@@ -9,8 +9,6 @@ import rethinkdb as r
 import csv
 
 Profile = False
-PrintCSV = False
-PrintJSON = False
 
 # arguments
 # 1: horizonDBName
@@ -49,6 +47,7 @@ if __name__ == '__main__':
   start, useHourly  =  (time.perf_counter(), False)
 
   dt = datetime.now()
+  now = datetime.now(r.make_timezone('00:00'))
 
   print("Executing at %s" % dt)
 
@@ -185,7 +184,6 @@ if __name__ == '__main__':
   .ungroup()
   .map( lambda group: {
     '$hz_v$': 0,
-    'time': r.now(),
     'type': group["group"],
     'sellAvg': group["reduction"][1]["sellavg"].default(0),
     'sellMin': group["reduction"][1]["sellmin"].default(0),
@@ -204,27 +202,13 @@ if __name__ == '__main__':
   .run(getConnection(), array_limit=300000, profile=Profile)
   )
 
-  data = aggregates
+  for v in aggregates:
+    v['time'] = now
 
-  r.table(AggregateTable).insert(data, return_changes=False).run(getConnection())
+  r.table(AggregateTable).insert(aggregates, return_changes=False).run(getConnection())
 
   if useHourly == True:
-    r.table(HourlyTable).insert(data, return_changes=False).run(getConnection())
+    r.table(HourlyTable).insert(aggregates, return_changes=False).run(getConnection())
 
   print("Aggregation finished in %s seconds" % (time.perf_counter() - aggTimer))
   print("Total time taken is %s seconds" % (time.perf_counter() - start))
-  
-  if PrintJSON:
-    print("Dumping json data")
-    with open('aggregates.json', 'w', newline='') as file:
-      json.dump(data, file)
-
-  if PrintCSV:
-    print("Dumping csv data")
-    filename = "./aggregates/aggregates_%s_%s_%s.csv" % (tt.tm_mday, tt.tm_hour, tt.tm_min)
-    with open(filename, 'w', newline='') as csvfile:
-      writer = csv.DictWriter(csvfile, delimiter=',', quotechar='"', fieldnames=data[0].keys(), quoting=csv.QUOTE_MINIMAL)
-      writer.writeheader()
-      for row in data:
-        writer.writerow(row)
-
