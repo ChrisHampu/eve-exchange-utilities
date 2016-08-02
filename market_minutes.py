@@ -58,7 +58,7 @@ if __name__ == '__main__':
 
     print("Flushing stale market orders")
 
-    r.db(HorizonDB).table(OrdersTable).delete().run(getConnection())
+    r.db(HorizonDB).table(OrdersTable).delete(durability="soft").run(getConnection())
 
     print("Stale orders flushed")
 
