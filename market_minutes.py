@@ -156,7 +156,7 @@ if __name__ == '__main__':
   print("Finished in %s seconds " % (time.perf_counter() - start))
 
   _orderIDs = set(orderIDs)
-  existingOrders = list(r.db(HorizonDB).table(OrdersTable).pluck('id', 'volume').run(getConnection(), array_limit=300000))
+  existingOrders = list(r.db(HorizonDB).table(OrdersTable).filter(lambda doc: (doc['stationID'] == 60003760) | (doc['stationID'] > 1000000000000)).pluck('id', 'volume').run(getConnection(), array_limit=300000))
 
   existingOrderVolume = dict([(d['id'],d['volume']) for d in existingOrders])
   existingOrderIDs = [i['id'] for i in existingOrders]
