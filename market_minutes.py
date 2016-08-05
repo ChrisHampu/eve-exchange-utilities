@@ -5,6 +5,7 @@ import json
 import time
 from datetime import datetime
 import rethinkdb as r
+import traceback
 
 import csv
 
@@ -14,11 +15,15 @@ Profile = False
 # 1: horizonDBName
 # 2: orderTableName
 # 3: aggregateTableName
+# 4: hourlyTableName
+# 5: dailyTableName
 
 HorizonDB = sys.argv[1]
 OrdersTable = sys.argv[2]
 AggregateTable = sys.argv[3]
 HourlyTable = sys.argv[4]
+DailyTable = sys.argv[5]
+volumeScratchTable = 'volume'
 
 def split_list(alist, wanted_parts=1):
   length = len(alist)
@@ -28,23 +33,47 @@ def split_list(alist, wanted_parts=1):
 def getConnection():
   return r.connect(db=HorizonDB)
 
-def loadPages(pages):
+def loadPages(volumeChanges, pages):
   inserted = 0
 
   for i in pages:
     req = requests.get("https://crest-tq.eveonline.com/market/10000002/orders/all/?page=%s" % i)
     j = req.json()
+
     if 'items' not in j:
       continue
+
     for item in j['items']: item['$hz_v$'] = 0
-    r.table(OrdersTable).insert(j['items'], durability="soft", return_changes=False, conflict="replace").run(getConnection())
-    inserted += len(j['items'])
+
+    try:
+      changes = r.table(OrdersTable).insert(j['items'], durability="soft", return_changes=True, conflict="replace").run(getConnection())
+      inserted += len(j['items'])
+
+      for change in changes['changes']:
+
+        if change['old_val'] is None:
+          continue
+
+        _type = change['old_val']['type']
+        diff = change['old_val']['volume'] - change['new_val']['volume']
+
+        if diff == 0:
+          continue
+
+        if _type not in volumeChanges:
+          volumeChanges[_type] = diff
+        else:
+          volumeChanges[_type] += diff
+
+    except Exception as e:
+      print("DB error while processing page %s: %s" % (i, e))
+      traceback.print_exc()
 
   return inserted
 
 if __name__ == '__main__':
 
-  start, useHourly  =  (time.perf_counter(), False)
+  start, useHourly, useDaily  =  (time.perf_counter(), False, False)
 
   dt = datetime.now()
   now = datetime.now(r.make_timezone('00:00'))
@@ -52,18 +81,25 @@ if __name__ == '__main__':
   print("Executing at %s" % dt)
 
   tt = dt.timetuple()
-
-  if (tt.tm_min == 55):
-
-    print("Flushing stale market orders")
-
-    r.db(HorizonDB).table(OrdersTable).delete(durability="soft").run(getConnection())
-
-    print("Stale orders flushed")
+  utt = dt.utctimetuple()
 
   if (tt.tm_min == 00):
     print("Writing hourly data")
     useHourly = True
+
+    print("Flushing stale data")
+
+    flushTimer = time.perf_counter()
+
+    r.db(HorizonDB).table(OrdersTable).delete(durability="soft").run(getConnection())
+    r.db(HorizonDB).table('volume').delete(durability="soft").run(getConnection())
+
+    print("Stale data flushed in %s seconds" % (time.perf_counter() - flushTimer))
+
+  # 11 AM UTC (EVE downtime)
+  if (utt.tm_hour == 11):
+    print("Writing daily data")
+    useHourly = True 
 
   req = requests.get("https://crest-tq.eveonline.com/market/10000002/orders/all/")
 
@@ -73,7 +109,25 @@ if __name__ == '__main__':
 
   for item in js['items']: item['$hz_v$'] = 0
 
-  r.table(OrdersTable).insert(js['items'], durability="soft", return_changes=False, conflict="replace").run(getConnection())
+  volumeChanges = {}
+
+  changes = r.table(OrdersTable).insert(js['items'], durability="soft", return_changes=True, conflict="replace").run(getConnection())
+
+  for change in changes['changes']:
+
+    if change['old_val'] is None:
+      continue
+
+    _type = change['old_val']['type']
+    diff = change['old_val']['volume'] - change['new_val']['volume']
+
+    if diff == 0:
+      continue
+
+    if _type not in volumeChanges:
+      volumeChanges[_type] = diff
+    else:
+      volumeChanges[_type] += diff
 
   print("Working on %s pages" % pageCount)
 
@@ -85,11 +139,30 @@ if __name__ == '__main__':
 
   with multiprocessing.Pool(processes=workers) as pool:
 
-    results = [pool.apply_async(loadPages, ([work[i]])) for i in range(0, len(work))]
+    results = [pool.apply_async(loadPages, (volumeChanges, work[i])) for i in range(0, len(work))]
 
-    print("Wrote %s documents" % (sum([res.get() for res in results])))
+    print("Wrote %s documents" % (sum([res.get() for res in results])+len(js['items'])))
 
   print("Finished in %s seconds " % (time.perf_counter() - start))
+
+  volumeIDs = volumeChanges.keys()
+
+  volumeDocs = list(r.table("volume").get_all(r.args(volumeIDs)).run(getConnection()))
+
+  existingKeys = [d['id'] for d in volumeDocs]
+
+  inserts = []
+
+  for _id in volumeIDs:
+
+    if _id not in existingKeys:
+      inserts.append({'id': _id, 'volume': volumeChanges[_id]})
+
+    else:
+      r.table("volume").get(_id).update({'volume': r.row['volume'] + volumeChanges[_id]}, durability="soft", return_changes=False).run(getConnection())
+
+  if len(inserts) > 0:
+    r.table("volume").insert(inserts, durability="soft", return_changes=False).run(getConnection())
 
   print("Starting aggregation")
   aggTimer = time.perf_counter()
@@ -204,11 +277,100 @@ if __name__ == '__main__':
 
   for v in aggregates:
     v['time'] = now
+    if v['type'] in volumeIDs:
+      v['tradeVolume'] = volumeChanges[v['type']]
+    else:
+      v['tradeVolume'] = 0
 
   r.table(AggregateTable).insert(aggregates, return_changes=False).run(getConnection())
 
+  print("Aggregation finished in %s seconds" % (time.perf_counter() - aggTimer))
+
   if useHourly == True:
+
+    print("Beginning hourly aggregation")
+
+    volume = list(r.table("volume").run(getConnection()))
+
+    volumeData = dict([(str(d['id']),d['volume']) for d in volume])
+
+    volumeKeys = volumeData.keys()
+
+    for v in aggregates:
+      if v['type'] in volumeKeys:
+        v['tradeVolume'] = volumeData[str(v['type'])]
+
     r.table(HourlyTable).insert(aggregates, return_changes=False).run(getConnection())
 
-  print("Aggregation finished in %s seconds" % (time.perf_counter() - aggTimer))
+    print("Finished hourly aggregation")
+
+  if useDaily == True:
+
+    print("Beginning daily aggregation")
+    dailyStart = time.perf_counter()
+
+    dailyAggregates = list(r.table(HourlyTable)
+    .filter(lambda doc:
+      r.now().sub(doc["time"]).lt(86400)
+    )
+    .group("type")
+    .map(lambda doc: {
+      'sellAvg': doc["sellAvg"],
+      'sellMin': doc["sellMin"],
+      'sellFifthPercentile': doc["sellFifthPercentile"],
+      'buyFifthPercentile': doc["buyFifthPercentile"],
+      'sellVolume': doc["sellVolume"],
+      'buyVolume': doc["buyVolume"],
+      'close': doc["close"],
+      'low': doc["low"],
+      'high': doc["high"],
+      'spread': doc["spread"],
+      'spreadValue': doc["spreadValue"],
+      'tradeValue': doc["tradeValue"],
+      'tradeVolume': doc["tradeVolume"],
+      'count': 1,
+    })
+    .reduce(lambda left, right: {
+      'count': left["count"].add(right["count"]),
+      'sellAvg': left["sellAvg"].add(right["sellAvg"]),
+      'sellMin': r.branch(r.gt(left["sellMin"], right['sellMin']), right['sellMin'], left['sellMin']),
+      'low': r.branch(r.gt(left["low"], right['low']), right['low'], left['low']),
+      'high': r.branch(r.gt(left['high'], right['high']), left['high'], right['high']),
+      'sellFifthPercentile': left["sellFifthPercentile"].add(right["sellFifthPercentile"]),
+      'buyFifthPercentile': left["buyFifthPercentile"].add(right["buyFifthPercentile"]),
+      'sellVolume': left["sellVolume"].add(right["sellVolume"]),
+      'buyVolume': left["buyVolume"].add(right["buyVolume"]),
+      'close': left["close"].add(right["close"]),
+      'spread': left["spread"].add(right["spread"]),
+      'spreadValue': left["spreadValue"].add(right["spreadValue"]),
+      'tradeValue': left["tradeValue"].add(right["tradeValue"]),
+      'tradeVolume': left["tradeVolume"].add(right["tradeVolume"])
+    })
+    .ungroup()
+    .map(lambda doc: {
+      'type': doc["group"],
+      'buyVolume': doc["reduction"]["buyVolume"].div(doc["reduction"]["count"]),
+      'close': doc["reduction"]["close"].div(doc["reduction"]["count"]),
+      'sellAvg': doc["reduction"]["sellAvg"].div(doc["reduction"]["count"]),
+      'sellVolume': doc["reduction"]["sellVolume"].div(doc["reduction"]["count"]),
+      'spread': doc["reduction"]["spread"].div(doc["reduction"]["count"]),
+      'tradeValue': doc["reduction"]["tradeValue"].div(doc["reduction"]["count"]),
+      'spreadValue': doc["reduction"]["spreadValue"].div(doc["reduction"]["count"]),
+      'sellFifthPercentile': doc["reduction"]["sellFifthPercentile"].div(doc["reduction"]["count"]),
+      'buyFifthPercentile': doc["reduction"]["buyFifthPercentile"].div(doc["reduction"]["count"]),
+      'low': doc["reduction"]["low"],
+      'high': doc["reduction"]["high"],
+      'sellMin': doc["reduction"]["sellMin"],
+      'tradeVolume': doc["reduction"]["tradeVolume"],
+      'frequency': "hours",
+      'time': now,
+      '$hz_v$': 0
+    })
+    .run(getConnection()))
+
+    r.table(DailyTable).insert(dailyAggregates, return_changes=False).run(getConnection())
+
+    print("Daily aggregation finished in %s seconds" % (time.perf_counter() - dailyStart))
+
+  
   print("Total time taken is %s seconds" % (time.perf_counter() - start))
