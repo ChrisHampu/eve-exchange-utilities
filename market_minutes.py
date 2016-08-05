@@ -42,16 +42,24 @@ def getConnection():
 def loadPages(volumeChanges, pages):
   inserted = 0
 
+  items = []
+
   for i in pages:
+
+    pageTime = time.perf_counter()
+
     req = requests.get("https://crest-tq.eveonline.com/market/10000002/orders/all/?page=%s" % i)
     j = req.json()
+
+    print("Fetched page %s in %s seconds" % (i, time.perf_counter() - pageTime))
 
     if 'items' not in j:
       continue
 
+    items.append([k['id'] for k in j['items']])
+
     for item in j['items']:
       item['$hz_v$'] = 0
-      item['time'] = now
 
     try:
       changes = r.table(OrdersTable).insert(j['items'], durability="soft", return_changes=True, conflict="replace").run(getConnection())
@@ -77,7 +85,7 @@ def loadPages(volumeChanges, pages):
       print("DB error while processing page %s: %s" % (i, e))
       traceback.print_exc()
 
-  return inserted
+  return items
 
 if __name__ == '__main__':
 
@@ -105,7 +113,6 @@ if __name__ == '__main__':
 
   for item in js['items']:
     item['$hz_v$'] = 0
-    item['time'] = now
 
   volumeChanges = {}
 
@@ -135,11 +142,18 @@ if __name__ == '__main__':
 
   work = split_list(range(2,pageCount+1), workers)
 
+  orderIDs = []
+
   with multiprocessing.Pool(processes=workers) as pool:
 
     results = [pool.apply_async(loadPages, (volumeChanges, work[i])) for i in range(0, len(work))]
 
-    print("Wrote %s documents" % (sum([res.get() for res in results])+len(js['items'])))
+    orderIDs = [res.get() for res in results]
+    orderIDs = [k for i in orderIDs for j in i for k in j]
+
+    orderIDs.extend([k['id'] for k in js['items']])
+
+    #print("Wrote %s documents" % (sum([res.get() for res in results])+len(js['items'])))
 
   print("Finished in %s seconds " % (time.perf_counter() - start))
 
@@ -374,9 +388,13 @@ if __name__ == '__main__':
   print("Flushing stale data")
 
   flushTimer = time.perf_counter()
-  flushOffset = dt.timetuple()
 
-  print(dict(r.db(HorizonDB).table(OrdersTable).filter(lambda doc: (r.now() - doc['time']) >= 3600).delete(durability="soft").run(getConnection())))
+  _orderIDs = set(orderIDs)
+  existingOrders = [i['id'] for i in list(r.db(HorizonDB).table(OrdersTable).pluck('id').run(getConnection(), array_limit=300000))]
+
+  toDelete = [v for v in existingOrders if v not in _orderIDs]
+  
+  r.db(HorizonDB).table(OrdersTable).get_all(r.args(toDelete)).delete(durability="soft").run(getConnection())
 
   print("Stale data flushed in %s seconds" % (time.perf_counter() - flushTimer))
 
