@@ -3,7 +3,7 @@ import multiprocessing
 import requests
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import rethinkdb as r
 import traceback
 
@@ -25,6 +25,12 @@ HourlyTable = sys.argv[4]
 DailyTable = sys.argv[5]
 volumeScratchTable = 'volume'
 
+dt = datetime.now()
+now = datetime.now(r.make_timezone('00:00'))
+
+tt = dt.timetuple()
+utt = dt.utctimetuple()
+
 def split_list(alist, wanted_parts=1):
   length = len(alist)
   return [ alist[i*length // wanted_parts: (i+1)*length // wanted_parts]
@@ -43,10 +49,12 @@ def loadPages(volumeChanges, pages):
     if 'items' not in j:
       continue
 
-    for item in j['items']: item['$hz_v$'] = 0
+    for item in j['items']:
+      item['$hz_v$'] = 0
+      item['time'] = now
 
     try:
-      changes = r.table(OrdersTable).insert(j['items'], durability="soft", return_changes=True, conflict="replace").run(getConnection())
+      changes = r.table(OrdersTable).insert(j['items'], durability="soft", return_changes=True, conflict="update").run(getConnection())
       inserted += len(j['items'])
 
       for change in changes['changes']:
@@ -75,26 +83,14 @@ if __name__ == '__main__':
 
   start, useHourly, useDaily  =  (time.perf_counter(), False, False)
 
-  dt = datetime.now()
-  now = datetime.now(r.make_timezone('00:00'))
-
   print("Executing at %s" % dt)
-
-  tt = dt.timetuple()
-  utt = dt.utctimetuple()
 
   if (tt.tm_min == 00):
     print("Writing hourly data")
     useHourly = True
 
-    print("Flushing stale data")
-
-    flushTimer = time.perf_counter()
-
-    r.db(HorizonDB).table(OrdersTable).delete(durability="soft").run(getConnection())
+    print("Flushing stale volume data")
     r.db(HorizonDB).table('volume').delete(durability="soft").run(getConnection())
-
-    print("Stale data flushed in %s seconds" % (time.perf_counter() - flushTimer))
 
   # 11 AM UTC (EVE downtime)
   if (utt.tm_hour == 11):
@@ -107,11 +103,13 @@ if __name__ == '__main__':
 
   pageCount = js['pageCount']
 
-  for item in js['items']: item['$hz_v$'] = 0
+  for item in js['items']:
+    item['$hz_v$'] = 0
+    item['time'] = now
 
   volumeChanges = {}
 
-  changes = r.table(OrdersTable).insert(js['items'], durability="soft", return_changes=True, conflict="replace").run(getConnection())
+  changes = r.table(OrdersTable).insert(js['items'], durability="soft", return_changes=True, conflict="update").run(getConnection())
 
   for change in changes['changes']:
 
@@ -373,5 +371,14 @@ if __name__ == '__main__':
 
     print("Daily aggregation finished in %s seconds" % (time.perf_counter() - dailyStart))
 
-  
+  print("Flushing stale data")
+
+  flushTimer = time.perf_counter()
+  flushTime = dt - timedelta(hours=1)
+  flushOffset = dt.timetuple()
+
+  print(dict(r.db(HorizonDB).table(OrdersTable).filter(lambda doc: (r.now() - doc['time']) >= 300).delete(durability="soft").run(getConnection())))
+
+  print("Stale data flushed in %s seconds" % (time.perf_counter() - flushTimer))
+
   print("Total time taken is %s seconds" % (time.perf_counter() - start))
