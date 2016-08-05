@@ -153,9 +153,21 @@ if __name__ == '__main__':
 
     orderIDs.extend([k['id'] for k in js['items']])
 
-    #print("Wrote %s documents" % (sum([res.get() for res in results])+len(js['items'])))
-
   print("Finished in %s seconds " % (time.perf_counter() - start))
+
+  _orderIDs = set(orderIDs)
+  existingOrders = list(r.db(HorizonDB).table(OrdersTable).pluck('id', 'volume').run(getConnection(), array_limit=300000))
+
+  existingOrderVolume = dict([(d['id'],d['volume']) for d in existingOrders])
+  existingOrderIDs = [i['id'] for i in existingOrders]
+
+  toDelete = [v for v in existingOrderIDs if v not in _orderIDs]
+
+  for i in toDelete:
+    if i not in volumeChanges:
+      volumeChanges[i] = existingOrderVolume[i]
+    else:
+      volumeChanges[i] += existingOrderVolume[i]
 
   volumeIDs = volumeChanges.keys()
 
@@ -388,11 +400,6 @@ if __name__ == '__main__':
   print("Flushing stale data")
 
   flushTimer = time.perf_counter()
-
-  _orderIDs = set(orderIDs)
-  existingOrders = [i['id'] for i in list(r.db(HorizonDB).table(OrdersTable).pluck('id').run(getConnection(), array_limit=300000))]
-
-  toDelete = [v for v in existingOrders if v not in _orderIDs]
   
   r.db(HorizonDB).table(OrdersTable).get_all(r.args(toDelete)).delete(durability="soft").run(getConnection())
 
