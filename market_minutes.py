@@ -289,6 +289,7 @@ if __name__ == '__main__':
   if useHourly == True:
 
     print("Beginning hourly aggregation")
+    hourlyTimer = time.perf_counter()
 
     volume = list(r.table("volume").run(getConnection()))
 
@@ -302,7 +303,7 @@ if __name__ == '__main__':
 
     r.table(HourlyTable).insert(aggregates, return_changes=False).run(getConnection())
 
-    print("Finished hourly aggregation")
+    print("Finished hourly aggregation in %s seconds" % (time.perf_counter() - hourlyTimer))
 
   if useDaily == True:
 
