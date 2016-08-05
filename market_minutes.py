@@ -374,10 +374,9 @@ if __name__ == '__main__':
   print("Flushing stale data")
 
   flushTimer = time.perf_counter()
-  flushTime = dt - timedelta(hours=1)
   flushOffset = dt.timetuple()
 
-  print(dict(r.db(HorizonDB).table(OrdersTable).filter(lambda doc: (r.now() - doc['time']) >= 300).delete(durability="soft").run(getConnection())))
+  print(dict(r.db(HorizonDB).table(OrdersTable).filter(lambda doc: (r.now() - doc['time']) >= 3600).delete(durability="soft").run(getConnection())))
 
   print("Stale data flushed in %s seconds" % (time.perf_counter() - flushTimer))
 
