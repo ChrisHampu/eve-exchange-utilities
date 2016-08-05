@@ -156,18 +156,19 @@ if __name__ == '__main__':
   print("Finished in %s seconds " % (time.perf_counter() - start))
 
   _orderIDs = set(orderIDs)
-  existingOrders = list(r.db(HorizonDB).table(OrdersTable).filter(lambda doc: (doc['stationID'] == 60003760) | (doc['stationID'] > 1000000000000)).pluck('id', 'volume').run(getConnection(), array_limit=300000))
+  existingOrders = list(r.db(HorizonDB).table(OrdersTable).filter(lambda doc: (doc['stationID'] == 60003760) | (doc['stationID'] > 1000000000000)).pluck('id', 'volume', 'type').run(getConnection(), array_limit=300000))
 
   existingOrderVolume = dict([(d['id'],d['volume']) for d in existingOrders])
+  existingOrderID2Type = dict([(d['id'],d['type']) for d in existingOrders])
   existingOrderIDs = [i['id'] for i in existingOrders]
 
   toDelete = [v for v in existingOrderIDs if v not in _orderIDs]
 
   for i in toDelete:
     if i not in volumeChanges:
-      volumeChanges[i] = existingOrderVolume[i]
+      volumeChanges[existingOrderID2Type[i]] = existingOrderVolume[i]
     else:
-      volumeChanges[i] += existingOrderVolume[i]
+      volumeChanges[existingOrderID2Type[i]] += existingOrderVolume[i]
 
   volumeIDs = volumeChanges.keys()
 
@@ -191,6 +192,7 @@ if __name__ == '__main__':
   print("Starting aggregation")
   aggTimer = time.perf_counter()
 
+  # TODO Benchmark plucking only the 3 relevant fields
   aggregates = (r.table(OrdersTable)
   .filter( lambda doc: (doc['buy'] == True) & (doc['price'] > 1 ) & ((doc['stationID'] == 60003760) | (doc['stationID'] > 1000000000000)) )
   .group("type")
