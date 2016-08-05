@@ -54,7 +54,7 @@ def loadPages(volumeChanges, pages):
       item['time'] = now
 
     try:
-      changes = r.table(OrdersTable).insert(j['items'], durability="soft", return_changes=True, conflict="update").run(getConnection())
+      changes = r.table(OrdersTable).insert(j['items'], durability="soft", return_changes=True, conflict="replace").run(getConnection())
       inserted += len(j['items'])
 
       for change in changes['changes']:
@@ -109,7 +109,7 @@ if __name__ == '__main__':
 
   volumeChanges = {}
 
-  changes = r.table(OrdersTable).insert(js['items'], durability="soft", return_changes=True, conflict="update").run(getConnection())
+  changes = r.table(OrdersTable).insert(js['items'], durability="soft", return_changes=True, conflict="replace").run(getConnection())
 
   for change in changes['changes']:
 
