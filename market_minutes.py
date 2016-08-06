@@ -100,7 +100,7 @@ if __name__ == '__main__':
   # 11 AM UTC (EVE downtime)
   if (utt.tm_hour == 11 and utt.tm_min == 00):
     print("Writing daily data")
-    useHourly = True 
+    useDaily = True 
 
   req = requests.get("https://crest-tq.eveonline.com/market/10000002/orders/all/")
 
