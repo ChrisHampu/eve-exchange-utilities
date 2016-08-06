@@ -389,7 +389,6 @@ if __name__ == '__main__':
       'high': doc["reduction"]["high"],
       'sellMin': doc["reduction"]["sellMin"],
       'tradeVolume': doc["reduction"]["tradeVolume"],
-      'frequency': "hours",
       'time': now,
       '$hz_v$': 0
     })
@@ -399,11 +398,16 @@ if __name__ == '__main__':
 
     print("Daily aggregation finished in %s seconds" % (time.perf_counter() - dailyStart))
 
-  print("Flushing stale data")
+  print("Flushing stale order data")
 
   flushTimer = time.perf_counter()
   
   r.db(HorizonDB).table(OrdersTable).get_all(r.args(toDelete)).delete(durability="soft").run(getConnection())
+
+  if (tt.tm_min == 55):
+
+    print("Flushing stale volume data")
+    r.db(HorizonDB).table('volume').delete(durability="soft").run(getConnection())
 
   print("Stale data flushed in %s seconds" % (time.perf_counter() - flushTimer))
 
