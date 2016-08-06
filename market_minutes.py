@@ -97,9 +97,6 @@ if __name__ == '__main__':
     print("Writing hourly data")
     useHourly = True
 
-    print("Flushing stale volume data")
-    r.db(HorizonDB).table('volume').delete(durability="soft").run(getConnection())
-
   # 11 AM UTC (EVE downtime)
   if (utt.tm_hour == 11):
     print("Writing daily data")
