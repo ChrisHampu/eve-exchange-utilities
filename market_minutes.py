@@ -316,13 +316,13 @@ if __name__ == '__main__':
 
     volume = list(r.table("volume").run(getConnection()))
 
-    volumeData = dict([(str(d['id']),d['volume']) for d in volume])
+    volumeData = dict([(d['id'],d['volume']) for d in volume])
 
     volumeKeys = volumeData.keys()
 
     for v in aggregates:
       if v['type'] in volumeKeys:
-        v['tradeVolume'] = volumeData[str(v['type'])]
+        v['tradeVolume'] = volumeData[v['type']]
 
     r.table(HourlyTable).insert(aggregates, return_changes=False).run(getConnection())
 
