@@ -401,7 +401,7 @@ if __name__ == '__main__':
   
   r.db(HorizonDB).table(OrdersTable).get_all(r.args(toDelete)).delete(durability="soft").run(getConnection())
 
-  if (tt.tm_min == 55):
+  if (tt.tm_min == 00):
 
     print("Flushing stale volume data")
     r.db(HorizonDB).table('volume').delete(durability="soft").run(getConnection())
