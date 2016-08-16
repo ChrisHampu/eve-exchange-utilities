@@ -161,11 +161,38 @@ if __name__ == '__main__':
 
   toDelete = [v for v in existingOrderIDs if v not in _orderIDs]
 
-  for i in toDelete:
-    if i not in volumeChanges:
-      volumeChanges[existingOrderID2Type[i]] = existingOrderVolume[i]
+  # Group total volume by type
+  print("Starting volume anomaly detection")
+  anomalyStart = time.perf_counter()
+  typeToAvgVolume = {}
+
+  for i in existingOrderIDs:
+    if i not in typeToAvgVolume:
+      typeToAvgVolume[existingOrderID2Type[i]] = [existingOrderVolume[i]]
     else:
-      volumeChanges[existingOrderID2Type[i]] += existingOrderVolume[i]
+      typeToAvgVolume[existingOrderID2Type[i]].append(existingOrderVolume[i])
+
+  # Average out the volumes
+  for i in typeToAvgVolume:
+    typeToAvgVolume[i] = sum(typeToAvgVolume[i]) / len(typeToAvgVolume[i])
+
+  anoms = 0
+
+  # Iterate, verify, and sum the documents that need to be removed
+  for i in toDelete:
+    _type = existingOrderID2Type[i]
+
+    if existingOrderVolume[i] > typeToAvgVolume[_type] * 1000:
+      anoms += 1
+      continue
+
+    if i not in volumeChanges:
+      volumeChanges[_type] = existingOrderVolume[i]
+    else:
+      volumeChanges[_type] += existingOrderVolume[i]
+
+  print("%s orders are anomalous vs %s orders to be deleted and %s existing orders" % (anoms, len(toDelete), len(existingOrderIDs)))
+  print("Finished anomaly detection in %s seconds " % (time.perf_counter() - anomalyStart))
 
   volumeIDs = volumeChanges.keys()
 
@@ -174,6 +201,7 @@ if __name__ == '__main__':
   existingKeys = [d['id'] for d in volumeDocs]
 
   inserts = []
+  volumeUpdateConnection = getConnection()
 
   for _id in volumeIDs:
 
@@ -181,7 +209,7 @@ if __name__ == '__main__':
       inserts.append({'id': _id, 'volume': volumeChanges[_id]})
 
     else:
-      r.table("volume").get(_id).update({'volume': r.row['volume'] + volumeChanges[_id]}, durability="soft", return_changes=False).run(getConnection())
+      r.table("volume").get(_id).update({'volume': r.row['volume'] + volumeChanges[_id]}, durability="soft", return_changes=False).run(volumeUpdateConnection)
 
   if len(inserts) > 0:
     r.table("volume").insert(inserts, durability="soft", return_changes=False).run(getConnection())
