@@ -25,6 +25,9 @@ HourlyTable = sys.argv[4]
 DailyTable = sys.argv[5]
 volumeScratchTable = 'volume'
 
+lowResPruneTime = 86400 # Prune 5-minute res documents older than 24 hours
+medResPruneTime = 604800 # Prune hourly documents older than 1 week
+
 dt = datetime.now()
 now = datetime.now(r.make_timezone('00:00'))
 
@@ -98,7 +101,7 @@ if __name__ == '__main__':
     useHourly = True
 
   # 11 AM UTC (EVE downtime)
-  if (utt.tm_hour == 11 and utt.tm_min == 00):
+  if (utt.tm_hour == 11 and useHourly == True):
     print("Writing daily data")
     useDaily = True 
 
@@ -423,17 +426,34 @@ if __name__ == '__main__':
 
     print("Daily aggregation finished in %s seconds" % (time.perf_counter() - dailyStart))
 
-  print("Flushing stale order data")
+  print("Flushing stale data")
+
+  flushConnection = getConnection()
+  flushTotalTimer = time.perf_counter()
 
   flushTimer = time.perf_counter()
-  
-  r.db(HorizonDB).table(OrdersTable).get_all(r.args(toDelete)).delete(durability="soft").run(getConnection())
+  print("Flushing low resolution data")
+  r.table(AggregateTable).filter(lambda doc: r.now().sub(doc["time"]).gt(lowResPruneTime)).delete(durability="soft").run(flushConnection)
+  print("Low res data flushed in %s seconds" % (time.perf_counter() - flushTimer))
 
-  if (tt.tm_min == 00):
+  if useHourly == True:
+    flushTimer = time.perf_counter()
+    print("Flushing medium resolution data")
+    r.table(HourlyTable).filter(lambda doc: r.now().sub(doc["time"]).gt(medResPruneTime)).delete(durability="soft").run(flushConnection)
+    print("Medium res data flushed in %s seconds" % (time.perf_counter() - flushTimer))
 
+  flushTimer = time.perf_counter()
+  print("Flushing stale orders")
+  r.table(OrdersTable).get_all(r.args(toDelete)).delete(durability="soft").run(flushConnection)
+  print("Stale orders flushed in %s seconds" % (time.perf_counter() - flushTimer))
+
+  if useHourly == True:
+
+    flushTimer = time.perf_counter()
     print("Flushing stale volume data")
-    r.db(HorizonDB).table('volume').delete(durability="soft").run(getConnection())
+    r.table('volume').delete(durability="soft").run(flushConnection)
+    print("Stale volume data flushed in %s seconds" % (time.perf_counter() - flushTimer))
 
-  print("Stale data flushed in %s seconds" % (time.perf_counter() - flushTimer))
+  print("Stale data flushed in total of %s seconds" % (time.perf_counter() - flushTotalTimer))
 
   print("Total time taken is %s seconds" % (time.perf_counter() - start))
