@@ -197,14 +197,14 @@ if __name__ == '__main__':
   print("%s orders are anomalous vs %s orders to be deleted and %s existing orders" % (anoms, len(toDelete), len(existingOrderIDs)))
   print("Finished anomaly detection in %s seconds " % (time.perf_counter() - anomalyStart))
 
+  volumeConnection = getConnection()
   volumeIDs = volumeChanges.keys()
 
-  volumeDocs = list(r.table("volume").get_all(r.args(volumeIDs)).run(getConnection()))
+  volumeDocs = list(r.table("volume").get_all(r.args(volumeIDs)).run(volumeConnection))
 
   existingKeys = [d['id'] for d in volumeDocs]
 
   inserts = []
-  volumeUpdateConnection = getConnection()
 
   for _id in volumeIDs:
 
@@ -212,10 +212,10 @@ if __name__ == '__main__':
       inserts.append({'id': _id, 'volume': volumeChanges[_id]})
 
     else:
-      r.table("volume").get(_id).update({'volume': r.row['volume'] + volumeChanges[_id]}, durability="soft", return_changes=False).run(volumeUpdateConnection)
+      r.table("volume").get(_id).update({'volume': r.row['volume'] + volumeChanges[_id]}, durability="soft", return_changes=False).run(volumeConnection)
 
   if len(inserts) > 0:
-    r.table("volume").insert(inserts, durability="soft", return_changes=False).run(getConnection())
+    r.table("volume").insert(inserts, durability="soft", return_changes=False).run(volumeConnection)
 
   print("Starting aggregation")
   aggTimer = time.perf_counter()
@@ -344,8 +344,9 @@ if __name__ == '__main__':
 
     print("Beginning hourly aggregation")
     hourlyTimer = time.perf_counter()
+    hourlyConn = getConnection()
 
-    volume = list(r.table("volume").run(getConnection()))
+    volume = list(r.table("volume").run(hourlyConn))
 
     volumeData = dict([(d['id'],d['volume']) for d in volume])
 
@@ -355,7 +356,7 @@ if __name__ == '__main__':
       if v['type'] in volumeKeys:
         v['tradeVolume'] = volumeData[v['type']]
 
-    r.table(HourlyTable).insert(aggregates, return_changes=False).run(getConnection())
+    r.table(HourlyTable).insert(aggregates, return_changes=False).run(hourlyConn)
 
     print("Finished hourly aggregation in %s seconds" % (time.perf_counter() - hourlyTimer))
 
