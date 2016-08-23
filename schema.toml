@@ -63,3 +63,15 @@ template = "collection('profit_top_items').anyRead()"
 
 [groups.default.rules.write_profit_top_items]
 template = "collection('profit_top_items').anyWrite()"
+
+[groups.default.rules.read_profit_alltime]
+template = "collection('profit_alltime').anyRead()"
+
+[groups.default.rules.write_profit_alltime]
+template = "collection('profit_alltime').anyWrite()"
+
+[groups.default.rules.read_profit_transactions]
+template = "collection('profit_transactions').anyRead()"
+
+[groups.default.rules.write_profit_transactions]
+template = "collection('profit_transactions').anyWrite()"
