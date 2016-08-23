@@ -103,7 +103,7 @@ if __name__ == '__main__':
   # 11 AM UTC (EVE downtime)
   if (utt.tm_hour == 11 and useHourly == True):
     print("Writing daily data")
-    useDaily = True 
+    useDaily = True
 
   req = requests.get("https://crest-tq.eveonline.com/market/10000002/orders/all/")
 
@@ -438,9 +438,26 @@ if __name__ == '__main__':
   print("Low res data flushed in %s seconds" % (time.perf_counter() - flushTimer))
 
   if useHourly == True:
-    flushTimer = time.perf_counter()
+
     print("Flushing medium resolution data")
-    r.table(HourlyTable).filter(lambda doc: r.now().sub(doc["time"]).gt(medResPruneTime)).delete(durability="soft").run(flushConnection)
+
+    flushTimer = time.perf_counter()
+
+    hourlyToDelete = []
+    hourlyDelta = timedelta(seconds=medResPruneTime)
+    docs = r.table(HourlyTable).run(flushConnection)
+    
+    for doc in docs:
+      if now - doc['time'] > hourlyDelta:
+        hourlyToDelete.append(doc['id'])
+
+    print("%s documents to delete" % len(hourlyToDelete))
+
+    try:
+      r.table(HourlyTable).get_all(r.args(hourlyToDelete)).delete().run(flushConnection)
+    except:
+      traceback.print_exc()
+
     print("Medium res data flushed in %s seconds" % (time.perf_counter() - flushTimer))
 
   flushTimer = time.perf_counter()
