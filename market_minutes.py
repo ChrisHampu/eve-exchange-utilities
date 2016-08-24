@@ -478,9 +478,8 @@ if __name__ == '__main__':
     prepareTimer = time.perf_counter()
     
     hourlyDelta = timedelta(seconds=medResPruneTime)
-    docs = r.table(HourlyTable).run(flushConnection)
-    
-    hourlyToDelete = [doc['id'] for doc in docs if now - doc['time'] > hourlyDelta]
+
+    hourlyToDelete = [doc['id'] for doc in r.table(HourlyTable).run(flushConnection) if now - doc['time'] > hourlyDelta]
 
     print("Calculated %s documents to delete in %s seconds" % (len(hourlyToDelete), time.perf_counter() - prepareTimer))
 
