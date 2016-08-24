@@ -28,6 +28,8 @@ volumeScratchTable = 'volume'
 lowResPruneTime = 86400 # Prune 5-minute res documents older than 24 hours
 medResPruneTime = 604800 # Prune hourly documents older than 1 week
 
+smaTimespan = 7
+
 dt = datetime.now()
 now = datetime.now(r.make_timezone('00:00'))
 
@@ -365,6 +367,35 @@ if __name__ == '__main__':
     print("Beginning daily aggregation")
     dailyStart = time.perf_counter()
 
+    print("Preparing SMA data")
+
+    spread_sma = dict()
+    volume_sma = dict()
+    grouped = dict()
+
+    docs = r.table('aggregates_daily').run(getConnection())
+
+    for i in docs:
+
+      if str(i['type']) in grouped:
+        grouped[str(i['type'])].append({arg: i[arg] for arg in ('time', 'spread', 'tradeVolume')})
+      else:
+        grouped[str(i['type'])] = [{arg: i[arg] for arg in ('time', 'spread', 'tradeVolume')}]
+
+    for g in grouped:
+
+      _sorted = sorted(grouped[g], key=lambda doc: doc['time'], reverse=True)[:smaTimespan-1]
+
+      if g == '29668':
+        print(len(_sorted))
+
+      spread_sma[g] = sum([i['spread'] for i in _sorted])
+      volume_sma[g] = sum([i['tradeVolume'] for i in _sorted])
+
+    print("SMA computed")
+    print(volume_sma['29668'])
+    print(spread_sma['29668'])
+
     dailyAggregates = list(r.table(HourlyTable)
     .filter(lambda doc:
       r.now().sub(doc["time"]).lt(86400)
@@ -418,6 +449,8 @@ if __name__ == '__main__':
       'high': doc["reduction"]["high"],
       'sellMin': doc["reduction"]["sellMin"],
       'tradeVolume': doc["reduction"]["tradeVolume"],
+      'tradeVolumeSMA': doc["reduction"]["tradeVolume"].add(r.expr(volume_sma)[doc["group"].coerce_to('string')]).div(smaTimespan),
+      'spreadSMA': doc["reduction"]["spread"].div(doc["reduction"]["count"]).add(r.expr(spread_sma)[doc["group"].coerce_to('string')]).div(smaTimespan),
       'time': now,
       '$hz_v$': 0
     })
@@ -443,14 +476,11 @@ if __name__ == '__main__':
 
     flushTimer = time.perf_counter()
     prepareTimer = time.perf_counter()
-
-    hourlyToDelete = []
+    
     hourlyDelta = timedelta(seconds=medResPruneTime)
     docs = r.table(HourlyTable).run(flushConnection)
     
-    for doc in docs:
-      if now - doc['time'] > hourlyDelta:
-        hourlyToDelete.append(doc['id'])
+    hourlyToDelete = [doc['id'] for doc in docs if now - doc['time'] > hourlyDelta]
 
     print("Calculated %s documents to delete in %s seconds" % (len(hourlyToDelete), time.perf_counter() - prepareTimer))
 
