@@ -442,6 +442,7 @@ if __name__ == '__main__':
     print("Flushing medium resolution data")
 
     flushTimer = time.perf_counter()
+    prepareTimer = time.perf_counter()
 
     hourlyToDelete = []
     hourlyDelta = timedelta(seconds=medResPruneTime)
@@ -451,7 +452,7 @@ if __name__ == '__main__':
       if now - doc['time'] > hourlyDelta:
         hourlyToDelete.append(doc['id'])
 
-    print("%s documents to delete" % len(hourlyToDelete))
+    print("Calculated %s documents to delete in %s seconds" % (len(hourlyToDelete), time.perf_counter()))
 
     try:
       r.table(HourlyTable).get_all(r.args(hourlyToDelete)).delete().run(flushConnection)
