@@ -485,7 +485,7 @@ if __name__ == '__main__':
 
   print("Low res data flushed in %s seconds" % (time.perf_counter() - flushTimer))
 
-  if useHourly == True:
+  if useDaily == True:
 
     print("Flushing medium resolution data")
 
