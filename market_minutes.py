@@ -175,6 +175,7 @@ if __name__ == '__main__':
   existingOrderVolume = dict([(d['id'],d['volume']) for d in existingOrders])
   existingOrderID2Type = dict([(d['id'],d['type']) for d in existingOrders])
   existingOrderIDs = [i['id'] for i in existingOrders]
+  existingOrderTypes = {i['type'] for i in existingOrders}
 
   toDelete = [v for v in existingOrderIDs if v not in _orderIDs]
 
@@ -398,15 +399,16 @@ if __name__ == '__main__':
 
       _sorted = sorted(grouped[g], key=lambda doc: doc['time'], reverse=True)[:smaTimespan-1]
 
-      if g == '29668':
-        print(len(_sorted))
-
       spread_sma[g] = sum([i['spread'] for i in _sorted])
       volume_sma[g] = sum([i['tradeVolume'] for i in _sorted])
 
     print("SMA computed")
-    print(volume_sma['29668'])
-    print(spread_sma['29668'])
+
+    # Fix missing data
+    for i in existingOrderTypes:
+      if str(i) not in volume_sma:
+        volume_sma[str(i)] = 0
+        spread_sma[str(i)] = 0
 
     dailyAggregates = list(r.table(HourlyTable)
     .filter(lambda doc:
