@@ -452,7 +452,7 @@ if __name__ == '__main__':
       if now - doc['time'] > hourlyDelta:
         hourlyToDelete.append(doc['id'])
 
-    print("Calculated %s documents to delete in %s seconds" % (len(hourlyToDelete), time.perf_counter()))
+    print("Calculated %s documents to delete in %s seconds" % (len(hourlyToDelete), time.perf_counter() - prepareTimer))
 
     try:
       r.table(HourlyTable).get_all(r.args(hourlyToDelete)).delete().run(flushConnection)
