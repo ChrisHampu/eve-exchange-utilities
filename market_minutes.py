@@ -475,7 +475,7 @@ if __name__ == '__main__':
 
   lowDelta = timedelta(seconds=lowResPruneTime)
 
-  lowToDelete = [doc['id'] for doc in r.table(AggregateTable).run(flushConnection) if now - doc['time'] > lowDelta]
+  lowToDelete = [doc['id'] for doc in r.table(AggregateTable).pluck('time', 'id').run(flushConnection) if now - doc['time'] > lowDelta]
 
   print("Calculated %s documents to delete in %s seconds" % (len(lowToDelete), time.perf_counter() - prepareTimer))
 
@@ -494,7 +494,7 @@ if __name__ == '__main__':
     
     hourlyDelta = timedelta(seconds=medResPruneTime)
 
-    hourlyToDelete = [doc['id'] for doc in r.table(HourlyTable).run(flushConnection) if now - doc['time'] > hourlyDelta]
+    hourlyToDelete = [doc['id'] for doc in r.table(HourlyTable).pluck('time', 'id').run(flushConnection) if now - doc['time'] > hourlyDelta]
 
     print("Calculated %s documents to delete in %s seconds" % (len(hourlyToDelete), time.perf_counter() - prepareTimer))
 
