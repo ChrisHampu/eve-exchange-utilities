@@ -53,8 +53,13 @@ def loadPages(volumeChanges, pages):
 
     pageTime = time.perf_counter()
 
-    req = requests.get("https://crest-tq.eveonline.com/market/10000002/orders/all/?page=%s" % i)
-    j = req.json()
+    try:
+      req = requests.get("https://crest-tq.eveonline.com/market/10000002/orders/all/?page=%s" % i)
+      j = req.json()
+    except:
+      print("Failed to load page %s" % i)
+      traceback.print_exc()
+      continue
 
     print("Fetched page %s in %s seconds" % (i, time.perf_counter() - pageTime))
 
@@ -150,10 +155,14 @@ if __name__ == '__main__':
 
     results = [pool.apply_async(loadPages, (volumeChanges, work[i])) for i in range(0, len(work))]
 
-    orderIDs = [res.get() for res in results]
-    orderIDs = [k for i in orderIDs for j in i for k in j]
+    try:
+      orderIDs = [res.get() for res in results]
+      orderIDs = [k for i in orderIDs for j in i for k in j]
 
-    orderIDs.extend([k['id'] for k in js['items']])
+      orderIDs.extend([k['id'] for k in js['items']])
+    except:
+      print("Failed to load all order IDs")
+      traceback.print_exc()
 
   print("Finished in %s seconds " % (time.perf_counter() - start))
 
