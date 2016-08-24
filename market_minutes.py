@@ -466,8 +466,23 @@ if __name__ == '__main__':
   flushTotalTimer = time.perf_counter()
 
   flushTimer = time.perf_counter()
+
+  #if useDaily == True:
+
   print("Flushing low resolution data")
-  r.table(AggregateTable).filter(lambda doc: r.now().sub(doc["time"]).gt(lowResPruneTime)).delete(durability="soft").run(flushConnection)
+
+  prepareTimer = time.perf_counter()
+
+  lowDelta = timedelta(seconds=lowResPruneTime)
+
+  lowToDelete = [doc['id'] for doc in r.table(AggregateTable).run(flushConnection) if now - doc['time'] > lowDelta]
+
+  print("Calculated %s documents to delete in %s seconds" % (len(lowToDelete), time.perf_counter() - prepareTimer))
+
+  r.table(AggregateTable).get_all(r.args(lowToDelete)).delete().run(flushConnection)
+
+  #r.table(AggregateTable).filter(lambda doc: r.now().sub(doc["time"]).gt(lowResPruneTime)).delete(durability="soft").run(flushConnection)
+
   print("Low res data flushed in %s seconds" % (time.perf_counter() - flushTimer))
 
   if useHourly == True:
