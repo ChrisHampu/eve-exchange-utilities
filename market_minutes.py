@@ -373,7 +373,7 @@ if __name__ == '__main__':
     volume_sma = dict()
     grouped = dict()
 
-    docs = r.table('aggregates_daily').run(getConnection())
+    docs = r.table(DailyTable).run(getConnection())
 
     for i in docs:
 
