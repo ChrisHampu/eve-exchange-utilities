@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 import rethinkdb as r
 import traceback
+import redis
 
 import csv
 
@@ -38,6 +39,15 @@ now = datetime.now(r.make_timezone('00:00'))
 tt = dt.timetuple()
 utt = dt.utctimetuple()
 
+re = None
+
+missingPages = 0
+
+try:
+  re = redis.StrictRedis(host='localhost', port=6379, db=0)
+except:
+  print("Redis server is unavailable")
+
 def split_list(alist, wanted_parts=1):
   length = len(alist)
   return [ alist[i*length // wanted_parts: (i+1)*length // wanted_parts]
@@ -61,6 +71,7 @@ def loadPages(volumeChanges, pages):
     except:
       print("Failed to load page %s" % i)
       traceback.print_exc()
+      missingPages += 1
       continue
 
     print("Fetched page %s in %s seconds" % (i, time.perf_counter() - pageTime))
@@ -99,6 +110,37 @@ def loadPages(volumeChanges, pages):
 
   return items
 
+def forceLoadDailyCache():
+
+  if re is None:
+    return
+
+  try:
+    if re.exists("market_daily_cache") == True:
+      return
+  except:
+    print("Redis server is unavailable, failed to load daily cache")
+    return
+
+  print("Loading daily documents into redis cache")
+
+  loadTimer = time.perf_counter()
+  dailyDocs = dict()
+
+  for doc in r.table(DailyTable).run(flushConnection):
+
+    if doc['type'] in dailyDocs:
+      if doc['time'] > dailyDocs[doc['type']]['time']:
+        dailyDocs[doc['type']] = doc
+
+    else:
+      dailyDocs[doc['type']] = doc
+  
+  for k in dailyDocs:
+    re.hmset('dly:'+str(dailyDocs[k]['type']), dailyDocs[k])
+
+  print("Loaded %s daily documents into cache in %s seconds" % (len(dailyDocs), time.perf_counter() - loadTimer))
+
 if __name__ == '__main__':
 
   start, useHourly, useDaily  =  (time.perf_counter(), False, False)
@@ -117,34 +159,44 @@ if __name__ == '__main__':
   if useDaily == True:
     print("Writing daily data")
 
-  req = requests.get("https://crest-tq.eveonline.com/market/10000002/orders/all/")
+  items = []
+  pageCount = 0
 
-  js = req.json()
+  try:
+    req = requests.get("https://crest-tq.eveonline.com/market/10000002/orders/all/")
 
-  pageCount = js['pageCount']
+    js = req.json()
 
-  for item in js['items']:
-    item['$hz_v$'] = 0
+    pageCount = js['pageCount']
+
+    for item in js['items']:
+      item['$hz_v$'] = 0
+
+    items = js['items']
+  except:
+    print("Failed initial crest loading")
+    missingPages += 1
 
   volumeChanges = {}
 
-  changes = r.table(OrdersTable).insert(js['items'], durability="soft", return_changes=True, conflict="replace").run(getConnection())
+  changes = r.table(OrdersTable).insert(items, durability="soft", return_changes=True, conflict="replace").run(getConnection())
 
-  for change in changes['changes']:
+  if 'changes' in changes:
+    for change in changes['changes']:
 
-    if change['old_val'] is None:
-      continue
+      if change['old_val'] is None:
+        continue
 
-    _type = change['old_val']['type']
-    diff = change['old_val']['volume'] - change['new_val']['volume']
+      _type = change['old_val']['type']
+      diff = change['old_val']['volume'] - change['new_val']['volume']
 
-    if diff == 0:
-      continue
+      if diff == 0:
+        continue
 
-    if _type not in volumeChanges:
-      volumeChanges[_type] = diff
-    else:
-      volumeChanges[_type] += diff
+      if _type not in volumeChanges:
+        volumeChanges[_type] = diff
+      else:
+        volumeChanges[_type] += diff
 
   print("Working on %s pages" % pageCount)
 
@@ -156,18 +208,19 @@ if __name__ == '__main__':
 
   orderIDs = []
 
-  with multiprocessing.Pool(processes=workers) as pool:
+  if len(work) is not 0:
+    with multiprocessing.Pool(processes=workers) as pool:
 
-    results = [pool.apply_async(loadPages, (volumeChanges, work[i])) for i in range(0, len(work))]
+      results = [pool.apply_async(loadPages, (volumeChanges, work[i])) for i in range(0, len(work))]
 
-    try:
-      orderIDs = [res.get() for res in results]
-      orderIDs = [k for i in orderIDs for j in i for k in j]
+      try:
+        orderIDs = [res.get() for res in results]
+        orderIDs = [k for i in orderIDs for j in i for k in j]
 
-      orderIDs.extend([k['id'] for k in js['items']])
-    except:
-      print("Failed to load all order IDs")
-      traceback.print_exc()
+        orderIDs.extend([k['id'] for k in js['items']])
+      except:
+        print("Failed to load all order IDs")
+        traceback.print_exc()
 
   print("Finished in %s seconds " % (time.perf_counter() - start))
 
@@ -198,18 +251,21 @@ if __name__ == '__main__':
 
   anoms = 0
 
-  # Iterate, verify, and sum the documents that need to be removed
-  for i in toDelete:
-    _type = existingOrderID2Type[i]
+  # Iterate, verify, and sum the documents that need to be remove
+  if missingPages == 0:
+    for i in toDelete:
+      _type = existingOrderID2Type[i]
 
-    if existingOrderVolume[i] > typeToAvgVolume[_type] * 1000:
-      anoms += 1
-      continue
+      if existingOrderVolume[i] > typeToAvgVolume[_type] * 1000:
+        anoms += 1
+        continue
 
-    if i not in volumeChanges:
-      volumeChanges[_type] = existingOrderVolume[i]
-    else:
-      volumeChanges[_type] += existingOrderVolume[i]
+      if i not in volumeChanges:
+        volumeChanges[_type] = existingOrderVolume[i]
+      else:
+        volumeChanges[_type] += existingOrderVolume[i]
+  else:
+    print("Not aggregating volume for documents to be deleted due to bad API pulls")
 
   print("%s orders are anomalous vs %s orders to be deleted and %s existing orders" % (anoms, len(toDelete), len(existingOrderIDs)))
   print("Finished anomaly detection in %s seconds " % (time.perf_counter() - anomalyStart))
@@ -476,6 +532,13 @@ if __name__ == '__main__':
 
     print("Daily aggregation finished in %s seconds" % (time.perf_counter() - dailyStart))
 
+    if re is not None:
+
+      print("Updating redis daily document cache")
+
+      for doc in dailyAggregates:
+        re.hmset('dly:'+str(doc['type']), doc)
+
   print("Flushing stale data")
 
   flushConnection = getConnection()
@@ -526,13 +589,19 @@ if __name__ == '__main__':
   r.table(OrdersTable).get_all(r.args(toDelete)).delete(durability="soft", return_changes=False).run(flushConnection, array_limit=500000)
   print("Stale orders flushed in %s seconds" % (time.perf_counter() - flushTimer))
 
-  if useHourly == True:
+  if missingPages == 0:
+    if useHourly == True:
 
-    flushTimer = time.perf_counter()
-    print("Flushing stale volume data")
-    r.table('volume').delete(durability="soft", return_changes=False).run(flushConnection)
-    print("Stale volume data flushed in %s seconds" % (time.perf_counter() - flushTimer))
+      flushTimer = time.perf_counter()
+      print("Flushing stale volume data")
+      r.table('volume').delete(durability="soft", return_changes=False).run(flushConnection, array_limit=500000)
+      print("Stale volume data flushed in %s seconds" % (time.perf_counter() - flushTimer))
+  else:
+    print("Skipping volume flush due to bad API pulls")
 
   print("Stale data flushed in total of %s seconds" % (time.perf_counter() - flushTotalTimer))
+
+  # In case the cache is out of date or non existant for any reason
+  forceLoadDailyCache()
 
   print("Total time taken is %s seconds" % (time.perf_counter() - start))
