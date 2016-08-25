@@ -495,7 +495,7 @@ if __name__ == '__main__':
 
   print("Calculated %s documents to delete in %s seconds" % (len(lowToDelete), time.perf_counter() - prepareTimer))
 
-  r.table(AggregateTable).get_all(r.args(lowToDelete)).delete(durability="soft", return_changes=False).run(flushConnection)
+  r.table(AggregateTable).get_all(r.args(lowToDelete)).delete(durability="soft", return_changes=False).run(flushConnection, array_limit=500000)
 
   #r.table(AggregateTable).filter(lambda doc: r.now().sub(doc["time"]).gt(lowResPruneTime)).delete(durability="soft").run(flushConnection)
 
@@ -515,7 +515,7 @@ if __name__ == '__main__':
     print("Calculated %s documents to delete in %s seconds" % (len(hourlyToDelete), time.perf_counter() - prepareTimer))
 
     try:
-      r.table(HourlyTable).get_all(r.args(hourlyToDelete)).delete(durability="soft", return_changes=False).run(flushConnection)
+      r.table(HourlyTable).get_all(r.args(hourlyToDelete)).delete(durability="soft", return_changes=False).run(flushConnection, array_limit=500000)
     except:
       traceback.print_exc()
 
@@ -523,7 +523,7 @@ if __name__ == '__main__':
 
   flushTimer = time.perf_counter()
   print("Flushing stale orders")
-  r.table(OrdersTable).get_all(r.args(toDelete)).delete(durability="soft", return_changes=False).run(flushConnection)
+  r.table(OrdersTable).get_all(r.args(toDelete)).delete(durability="soft", return_changes=False).run(flushConnection, array_limit=500000)
   print("Stale orders flushed in %s seconds" % (time.perf_counter() - flushTimer))
 
   if useHourly == True:
