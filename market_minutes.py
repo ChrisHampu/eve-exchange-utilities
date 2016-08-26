@@ -116,7 +116,7 @@ def forceLoadDailyCache():
     return
 
   try:
-    if re.exists("market_daily_cache") == True:
+    if re.exists("dly:28668") == True:
       return
   except:
     print("Redis server is unavailable, failed to load daily cache")
