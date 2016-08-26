@@ -61,11 +61,15 @@ def loadPages(volumeChanges, pages):
 
   items = []
 
+  print("Working on pages")
+  print(pages)
+
   for i in pages:
 
     pageTime = time.perf_counter()
 
     try:
+      print("Fetching page %s" % i)
       req = requests.get("https://crest-tq.eveonline.com/market/10000002/orders/all/?page=%s" % i)
       j = req.json()
     except:
