@@ -174,7 +174,6 @@ if __name__ == '__main__':
   if useDaily == True:
     print("Writing daily data")
 
-  useHourly = True
   userOrderConnection = getConnection()
 
   if useHourly == True:
