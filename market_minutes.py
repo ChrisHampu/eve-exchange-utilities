@@ -278,7 +278,7 @@ if __name__ == '__main__':
         print("Failed to load all order IDs")
         traceback.print_exc()
 
-      print("Loaded %s orders" %s len(orderIDs))
+      print("Loaded %s orders" % len(orderIDs))
 
   print("Finished in %s seconds " % (time.perf_counter() - start))
 
