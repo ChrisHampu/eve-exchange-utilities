@@ -10,6 +10,11 @@ import redis
 
 import csv
 
+try:
+    import xml.etree.cElementTree as ET
+except ImportError:
+    import xml.etree.ElementTree as ET
+
 Profile = False
 
 # arguments
@@ -18,12 +23,16 @@ Profile = False
 # 3: aggregateTableName
 # 4: hourlyTableName
 # 5: dailyTableName
+# 6: settingsTableName
+# 7: userOrdersTableName
 
 HorizonDB = sys.argv[1]
 OrdersTable = sys.argv[2]
 AggregateTable = sys.argv[3]
 HourlyTable = sys.argv[4]
 DailyTable = sys.argv[5]
+SettingsTable = sys.argv[6]
+UserOrders = sys.argv[7]
 volumeScratchTable = 'volume'
 
 lowResPruneTime = 86400 # Prune 5-minute res documents older than 24 hours
@@ -42,6 +51,8 @@ utt = dt.utctimetuple()
 re = None
 
 missingPages = 0
+
+playerOrderUrl = 'https://api.eveonline.com/char/MarketOrders.xml.aspx?characterID=%s&keyID=%s&vCode=%s'
 
 try:
   re = redis.StrictRedis(host='localhost', port=6379, db=0)
@@ -163,6 +174,47 @@ if __name__ == '__main__':
   if useDaily == True:
     print("Writing daily data")
 
+  useHourly = True
+  userOrderConnection = getConnection()
+
+  if useHourly == True:
+    print("Loading user orders")
+
+    settings = list(r.table(SettingsTable).run(userOrderConnection))
+
+    for user in settings:
+      
+      if 'eveApiKey' not in user:
+        continue
+
+      if len(user['eveApiKey']['keyID']) and len(user['eveApiKey']['vCode']):
+
+        userID = user['userID']
+
+        print("Loading user %s" % userID)
+
+        req = requests.get(playerOrderUrl % (user['eveApiKey']['characterID'], user['eveApiKey']['keyID'], user['eveApiKey']['vCode']))
+
+        try:
+          tree = ET.fromstring(req.text)
+
+          if tree.find('error') is not None:
+            print(tree.find('error').text)
+            print("Error while pulling player orders")
+            continue
+
+          rows = [row for row in list(tree.find('result').find('rowset')) if row.attrib['orderState'] == '0']
+
+        except:
+          traceback.print_exc()
+          continue
+
+        #r.table(UserOrders).insert()
+        orders = [{**{k:row.attrib[k] for k in ('orderID', 'orderState', 'volRemaining', 'issued', 'minVolume', 'stationID', 'volEntered', 'typeID', 'bid', 'price')}, **{'$hz_v$': 0, 'userID': userID, 'id': userID + '_' + row.attrib['orderID']}} for row in rows]
+
+        r.table(UserOrders).filter({'userID': userID}).delete().run(userOrderConnection)
+        r.table(UserOrders).insert(orders, durability="soft").run(userOrderConnection)
+
   items = []
   pageCount = 0
 
@@ -225,6 +277,8 @@ if __name__ == '__main__':
       except:
         print("Failed to load all order IDs")
         traceback.print_exc()
+
+      print("Loaded %s orders" %s len(orderIDs))
 
   print("Finished in %s seconds " % (time.perf_counter() - start))
 

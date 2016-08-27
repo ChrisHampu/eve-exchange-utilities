@@ -13,26 +13,14 @@ template = "collection('users').find({id: userId()})"
 [groups.default.rules.read_aggregates]
 template = "collection('aggregates').anyRead()"
 
-[groups.default.rules.write_aggregates]
-template = "collection('aggregates').anyWrite()"
-
 [groups.default.rules.read_aggregates_hourly]
 template = "collection('aggregates_hourly').anyRead()"
-
-[groups.default.rules.write_aggregates_hourly]
-template = "collection('aggregates_hourly').anyWrite()"
 
 [groups.default.rules.read_aggregates_daily]
 template = "collection('aggregates_daily').anyRead()"
 
-[groups.default.rules.write_aggregates_daily]
-template = "collection('aggregates_daily').anyWrite()"
-
 [groups.default.rules.read_marketorders]
 template = "collection('orders').anyRead()"
-
-[groups.default.rules.write_marketorders]
-template = "collection('orders').anyWrite()"
 
 [groups.default.rules.read_settings]
 template = "collection('user_settings').anyRead()"
@@ -49,29 +37,17 @@ template = "collection('notifications').anyWrite()"
 [groups.default.rules.read_subscription]
 template = "collection('subscription').anyRead()"
 
-[groups.default.rules.write_subscription]
-template = "collection('subscription').anyWrite()"
-
 [groups.default.rules.read_profit_chart]
 template = "collection('profit_chart').anyRead()"
-
-[groups.default.rules.write_profit_chart]
-template = "collection('profit_chart').anyWrite()"
 
 [groups.default.rules.read_profit_top_items]
 template = "collection('profit_top_items').anyRead()"
 
-[groups.default.rules.write_profit_top_items]
-template = "collection('profit_top_items').anyWrite()"
-
 [groups.default.rules.read_profit_alltime]
 template = "collection('profit_alltime').anyRead()"
-
-[groups.default.rules.write_profit_alltime]
-template = "collection('profit_alltime').anyWrite()"
 
 [groups.default.rules.read_profit_transactions]
 template = "collection('profit_transactions').anyRead()"
 
-[groups.default.rules.write_profit_transactions]
-template = "collection('profit_transactions').anyWrite()"
+[groups.default.rules.read_user_orders]
+template = "collection('user_orders').anyRead()"
