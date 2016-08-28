@@ -394,7 +394,7 @@ if __name__ == '__main__':
   })
   .union(
     r.table(OrdersTable)
-    .filter({'buy': False})
+    .filter( lambda doc: (doc['buy'] == False) & ((doc['stationID'] == 60003760) | (doc['stationID'] > 1000000000000)) )
     .group("type")
     .map( lambda doc: {
       'price': doc["price"], 'volume': doc["volume"]
