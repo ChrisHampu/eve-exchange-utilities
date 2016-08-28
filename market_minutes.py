@@ -282,25 +282,47 @@ if __name__ == '__main__':
   print("Finished in %s seconds " % (time.perf_counter() - start))
 
   _orderIDs = set(orderIDs)
-  existingOrders = list(r.db(HorizonDB).table(OrdersTable).filter(lambda doc: (doc['stationID'] == 60003760) | (doc['stationID'] > 1000000000000)).pluck('id', 'volume', 'type').run(getConnection(), array_limit=300000))
+
+  # Need to consider whether using 'volume entered' is better than using the current volume left
+  # to get a better idea of totals
+  existingOrders = list(r.db(HorizonDB).table(OrdersTable).filter(lambda doc: (doc['stationID'] == 60003760) | (doc['stationID'] > 1000000000000)).pluck('id', 'volume', 'type', 'buy').run(getConnection(), array_limit=300000))
 
   existingOrderVolume = dict([(d['id'],d['volume']) for d in existingOrders])
   existingOrderID2Type = dict([(d['id'],d['type']) for d in existingOrders])
+  existingOrderID2Buy = dict([(d['id'],d['buy']) for d in existingOrders])
   existingOrderIDs = [i['id'] for i in existingOrders]
-  existingOrderTypes = {i['type'] for i in existingOrders}
+  #existingOrderTypes = {i['type'] for i in existingOrders}
 
   toDelete = [v for v in existingOrderIDs if v not in _orderIDs]
+
+  print(len(existingOrderIDs))
 
   # Group total volume by type
   print("Starting volume anomaly detection")
   anomalyStart = time.perf_counter()
   typeToAvgVolume = {}
+  typeToTotalBuyVolume = {}
+  typeToTotalSellVolume = {}
 
   for i in existingOrderIDs:
-    if i not in typeToAvgVolume:
-      typeToAvgVolume[existingOrderID2Type[i]] = [existingOrderVolume[i]]
+
+    _type = existingOrderID2Type[i]
+
+    if _type not in typeToAvgVolume:
+      typeToAvgVolume[_type] = [existingOrderVolume[i]]
     else:
-      typeToAvgVolume[existingOrderID2Type[i]].append(existingOrderVolume[i])
+      typeToAvgVolume[_type].append(existingOrderVolume[i])
+
+    if existingOrderID2Buy[i] == True:
+      if _type not in typeToTotalBuyVolume:
+        typeToTotalBuyVolume[_type] = existingOrderVolume[i]
+      else:
+        typeToTotalBuyVolume[_type] += existingOrderVolume[i]
+    else:
+      if _type not in typeToTotalSellVolume:
+        typeToTotalSellVolume[_type] = existingOrderVolume[i]
+      else:
+        typeToTotalSellVolume[_type] += existingOrderVolume[i]
 
   # Average out the volumes
   for i in typeToAvgVolume:
@@ -313,7 +335,20 @@ if __name__ == '__main__':
     for i in toDelete:
       _type = existingOrderID2Type[i]
 
-      if existingOrderVolume[i] > typeToAvgVolume[_type] * 1000:
+      # If the volume of this order exceeds the entirety of the rest of the order volume for this item, then its an outcast
+      if existingOrderID2Buy[i] == True:
+        if existingOrderVolume[i] > typeToTotalBuyVolume[_type] - existingOrderVolume[i]:
+          anoms += 1
+          #print("Order % of item %s exceeds realistic buy volume %s,%s" % (i, _type, existingOrderVolume[i], typeToTotalBuyVolume[_type] - existingOrderVolume[i]))
+          continue
+      else:
+        if existingOrderVolume[i] > typeToTotalSellVolume[_type] - existingOrderVolume[i]:
+          anoms += 1
+          #print("Order % of item %s exceeds realistic sell volume %s,%s" % (i, _type, existingOrderVolume[i], typeToTotalSellVolume[_type] - existingOrderVolume[i]))
+          continue
+
+      if existingOrderVolume[i] > typeToAvgVolume[_type] * 100:
+        print("Order % of item %s exceeds realistic avg %s,%s" % (i, _type, existingOrderVolume[i], typeToAvgVolume[_type]))
         anoms += 1
         continue
 
