@@ -54,6 +54,3 @@ template = "collection('user_orders').anyRead()"
 
 [groups.default.rules.read_portfolios]
 template = "collection('portfolios').anyRead()"
-
-[groups.default.rules.write_portfolios]
-template = "collection('portfolios').store()"
