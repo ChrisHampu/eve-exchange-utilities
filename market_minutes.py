@@ -501,6 +501,8 @@ if __name__ == '__main__':
     else:
       v['tradeVolume'] = 0
 
+    re.hmset('cur:'+str(v['type']), v)
+
   r.table(AggregateTable).insert(aggregates, return_changes=False).run(getConnection())
 
   print("Aggregation finished in %s seconds" % (time.perf_counter() - aggTimer))
