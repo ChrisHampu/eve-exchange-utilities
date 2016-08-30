@@ -35,7 +35,7 @@ SettingsTable = sys.argv[6]
 UserOrders = sys.argv[7]
 volumeScratchTable = 'volume'
 
-lowResPruneTime = 86400 # Prune 5-minute res documents older than 24 hours
+lowResPruneTime = 64800 # Prune 5-minute res documents older than 24 hours
 medResPruneTime = 604800 # Prune hourly documents older than 1 week
 
 smaTimespan = 7
