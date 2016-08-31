@@ -163,55 +163,60 @@ def aggregatePortfolios():
 
   for doc in r.table(PortfoliosTable).run(portfolioConnection):
 
-    components = []
-    totalSpread = 0
-    totalVolume = 0
-    portfolioValue = 0
+    try:
+      components = []
+      totalSpread = 0
+      totalVolume = 0
+      portfolioValue = 0
 
-    for component in doc['components']:
+      for component in doc['components']:
 
-      minuteData = re.hgetall('cur:'+str(component['typeID']))
-      dailyData = re.hgetall('dly:'+str(component['typeID']))
+        minuteData = re.hgetall('cur:'+str(component['typeID']))
+        dailyData = re.hgetall('dly:'+str(component['typeID']))
 
-      print(minuteData)
+        print(minuteData)
 
-      unitPrice = float(minuteData[b'buyFifthPercentile'])
-      totalPrice = unitPrice * component['quantity'] * doc['industryQuantity'];
-      spread = float(minuteData[b'spread'])
-      volume = float(dailyData[b'tradeVolume'])
+        unitPrice = float(minuteData[b'buyFifthPercentile'])
+        totalPrice = unitPrice * component['quantity'] * doc['industryQuantity'];
+        spread = float(minuteData[b'spread'])
+        volume = float(dailyData[b'tradeVolume'])
 
-      totalSpread += spread
-      totalVolume += volume
-      portfolioValue += totalPrice
+        totalSpread += spread
+        totalVolume += volume
+        portfolioValue += totalPrice
 
-      components.append({
-        'unitPrice': unitPrice,
-        'totalPrice': totalPrice,
-        'spread': spread,
-        'volume': volume,
-        'typeID': component['typeID'],
-        'quantity': component['quantity']
-      })
+        components.append({
+          'unitPrice': unitPrice,
+          'totalPrice': totalPrice,
+          'spread': spread,
+          'volume': volume,
+          'typeID': component['typeID'],
+          'quantity': component['quantity']
+        })
 
-    avgSpread = totalSpread / len(doc['components'])
+      avgSpread = totalSpread / len(doc['components'])
 
-    if doc['type'] == 1:
-      baseMinuteData = re.hgetall('cur:'+str(doc['industryTypeID']))
- 
-      industrySpread = 100 - (portfolioValue / float(baseMinuteData[b'buyFifthPercentile'])) * 100
-      industryValue = float(baseMinuteData[b'buyFifthPercentile'])
+      if doc['type'] == 1:
+        baseMinuteData = re.hgetall('cur:'+str(doc['industryTypeID']))
+   
+        industrySpread = 100 - (portfolioValue / float(baseMinuteData[b'buyFifthPercentile'])) * 100
+        industryValue = float(baseMinuteData[b'buyFifthPercentile'])
 
-    else:
-      industrySpread = 0
-      industryValue = 0
+      else:
+        industrySpread = 0
+        industryValue = 0
 
-    r.table(PortfoliosTable).get(doc['id']).update({
-      'currentValue': portfolioValue,
-      'averageSpread': avgSpread,
-      'components': components,
-      'industrySpread': industrySpread,
-      'industryValue': industryValue
-    }).run(portfolioConnection)
+      r.table(PortfoliosTable).get(doc['id']).update({
+        'currentValue': portfolioValue,
+        'averageSpread': avgSpread,
+        'components': components,
+        'industrySpread': industrySpread,
+        'industryValue': industryValue
+      }).run(portfolioConnection)
+
+    except:
+      traceback.print_exc()
+      print("Failed to update portfolio %s" % doc['portfolioID'])
 
 if __name__ == '__main__':
 
