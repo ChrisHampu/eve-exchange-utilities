@@ -174,8 +174,6 @@ def aggregatePortfolios():
         minuteData = re.hgetall('cur:'+str(component['typeID']))
         dailyData = re.hgetall('dly:'+str(component['typeID']))
 
-        print(minuteData)
-
         unitPrice = float(minuteData[b'buyFifthPercentile'])
         totalPrice = unitPrice * component['quantity'] * doc['industryQuantity'];
         spread = float(minuteData[b'spread'])
