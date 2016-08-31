@@ -51,8 +51,6 @@ utt = dt.utctimetuple()
 
 re = None
 
-missingPages = 0
-
 playerOrderUrl = 'https://api.eveonline.com/char/MarketOrders.xml.aspx?characterID=%s&keyID=%s&vCode=%s'
 
 try:
@@ -69,9 +67,10 @@ def getConnection():
   return r.connect(db=HorizonDB)
 
 def loadPages(volumeChanges, pages):
-  inserted = 0
 
+  inserted = 0
   items = []
+  missing = 0
 
   print("Working on pages")
   print(pages)
@@ -86,8 +85,8 @@ def loadPages(volumeChanges, pages):
       j = req.json()
     except:
       print("Failed to load page %s" % i)
+      missing += 1
       traceback.print_exc()
-      missingPages += 1
       continue
 
     print("Fetched page %s in %s seconds" % (i, time.perf_counter() - pageTime))
@@ -95,7 +94,7 @@ def loadPages(volumeChanges, pages):
     if 'items' not in j:
       continue
 
-    items.append([k['id'] for k in j['items']])
+    items.extend([k['id'] for k in j['items']])
 
     for item in j['items']:
       item['$hz_v$'] = 0
@@ -119,12 +118,12 @@ def loadPages(volumeChanges, pages):
           volumeChanges[_type] = diff
         else:
           volumeChanges[_type] += diff
-
     except Exception as e:
+      missing += 1
       print("DB error while processing page %s: %s" % (i, e))
       traceback.print_exc()
 
-  return items
+  return (items, missing)
 
 def forceLoadDailyCache():
 
@@ -223,7 +222,7 @@ def aggregatePortfolios():
 
 if __name__ == '__main__':
 
-  start, useHourly, useDaily  =  (time.perf_counter(), False, False)
+  start, useHourly, useDaily, missingPages = (time.perf_counter(), False, False, 0)
 
   print("Executing at %s" % dt)
 
@@ -334,8 +333,10 @@ if __name__ == '__main__':
       results = [pool.apply_async(loadPages, (volumeChanges, work[i])) for i in range(0, len(work))]
 
       try:
-        orderIDs = [res.get() for res in results]
-        orderIDs = [k for i in orderIDs for j in i for k in j]
+        _results = [res.get() for res in results]
+        
+        orderIDs = [j for i, x in _results for j in i]
+        missingPages += sum([x for i, x in _results])
 
         orderIDs.extend([k['id'] for k in js['items']])
       except:
@@ -566,7 +567,14 @@ if __name__ == '__main__':
     else:
       v['tradeVolume'] = 0
 
-    re.hmset('cur:'+str(v['type']), v)
+  print("Updating current redis cache")
+
+  try:
+    for v in aggregates:
+      re.hmset('cur:'+str(v['type']), v)
+  except:
+    traceback.print_exc()
+    print("Failed to update current redis cache")
 
   r.table(AggregateTable).insert(aggregates, return_changes=False).run(getConnection())
 
@@ -695,8 +703,14 @@ if __name__ == '__main__':
 
       print("Updating redis daily document cache")
 
-      for doc in dailyAggregates:
-        re.hmset('dly:'+str(doc['type']), doc)
+      try:
+
+        for doc in dailyAggregates:
+          re.hmset('dly:'+str(doc['type']), doc)
+
+      except:
+        traceback.print_exc()
+        print("Failed to update daily redis cache")
 
   print("Flushing stale data")
 
