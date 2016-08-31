@@ -218,6 +218,8 @@ def aggregatePortfolios():
       traceback.print_exc()
       print("Failed to update portfolio %s" % doc['portfolioID'])
 
+  print("Portfolios updated")
+
 if __name__ == '__main__':
 
   start, useHourly, useDaily  =  (time.perf_counter(), False, False)
