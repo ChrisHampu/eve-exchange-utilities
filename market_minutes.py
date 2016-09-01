@@ -167,6 +167,8 @@ def aggregatePortfolios():
       totalSpread = 0
       totalVolume = 0
       portfolioValue = 0
+      hourly = doc['hourlyChart']
+      daily = doc['dailyChart']
 
       for component in doc['components']:
 
@@ -206,12 +208,36 @@ def aggregatePortfolios():
         industrySpread = 0
         industryValue = 0
 
+      # Hourly stats
+      if True:
+
+        if doc['type'] == 0:
+
+          hourly.append({
+            'time': now,
+            'portfolioValue': portfolioValue,
+            'avgSpread': avgSpread
+          })
+        else:
+          hourly.append({
+            'time': now,
+            'portfolioValue': portfolioValue,
+            'avgSpread': avgSpread,
+            'industryValue': industryValue,
+            'industrySpread': industrySpread,
+            'profitValue': industryValue - portfolioValue
+          })
+
+      # 11 AM UTC (EVE downtime) - Daily stats
+      #if (utt.tm_hour == 11 and useHourly == True):
+
       r.table(PortfoliosTable).get(doc['id']).update({
         'currentValue': portfolioValue,
         'averageSpread': avgSpread,
         'components': components,
         'industrySpread': industrySpread,
-        'industryValue': industryValue
+        'industryValue': industryValue,
+        'hourlyChart': hourly
       }).run(portfolioConnection)
 
     except:
@@ -334,7 +360,7 @@ if __name__ == '__main__':
 
       try:
         _results = [res.get() for res in results]
-        
+
         orderIDs = [j for i, x in _results for j in i]
         missingPages += sum([x for i, x in _results])
 
