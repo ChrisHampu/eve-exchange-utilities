@@ -757,7 +757,8 @@ if __name__ == '__main__':
 
   print("Calculated %s documents to delete in %s seconds" % (len(lowToDelete), time.perf_counter() - prepareTimer))
 
-  r.table(AggregateTable).get_all(r.args(lowToDelete)).delete(durability="soft", return_changes=False).run(flushConnection, array_limit=1000000)
+  # Use a hard cap of 100k documents to grab from the server for deletion at any given time
+  r.table(AggregateTable).get_all(r.args(lowToDelete[:100000])).delete(durability="soft", return_changes=False).run(flushConnection, array_limit=1000000)
 
   #r.table(AggregateTable).filter(lambda doc: r.now().sub(doc["time"]).gt(lowResPruneTime)).delete(durability="soft").run(flushConnection)
 
@@ -777,7 +778,7 @@ if __name__ == '__main__':
     print("Calculated %s documents to delete in %s seconds" % (len(hourlyToDelete), time.perf_counter() - prepareTimer))
 
     try:
-      r.table(HourlyTable).get_all(r.args(hourlyToDelete)).delete(durability="soft", return_changes=False).run(flushConnection, array_limit=1000000)
+      r.table(HourlyTable).get_all(r.args(hourlyToDelete[:250000])).delete(durability="soft", return_changes=False).run(flushConnection, array_limit=1000000)
     except:
       traceback.print_exc()
 
