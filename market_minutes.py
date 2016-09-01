@@ -209,7 +209,7 @@ def aggregatePortfolios():
         industryValue = 0
 
       # Hourly stats
-      if True:
+      if tt.tm_min == 00:
 
         if doc['type'] == 0:
 
