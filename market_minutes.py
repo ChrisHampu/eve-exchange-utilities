@@ -242,7 +242,7 @@ def aggregatePortfolios():
               else:
                 materials[mat['typeID']] = matQuantity
 
-              matCost += float(re.hgetall('cur:'+str(mat['typeID']))[b'buyFifthPercentile']) * matQuantity
+              matCost += float(re.hgetall('cur:'+str(mat['typeID']))[b'sellFifthPercentile']) * matQuantity
               matCost = matCost + (matCost * systemIndex) + (matCost * systemIndex * taxRate)
 
           totalMaterialCost += matCost
