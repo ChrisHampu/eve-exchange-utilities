@@ -96,14 +96,15 @@ def loadPages(volumeChanges, pages):
     if 'items' not in j:
       continue
 
-    items.extend([k['id'] for k in j['items']])
+    _items = [k for k in j['items'] if (k['stationID'] == 60003760 or k['stationID'] > 1000000000000)]
+    items.extend([k['id'] for k in _items])
 
-    for item in j['items']:
-      item['$hz_v$'] = 0
+    for _item in j['items']:
+      _item['$hz_v$'] = 0
 
     try:
-      changes = r.table(OrdersTable).insert(j['items'], durability="soft", return_changes=True, conflict="replace").run(getConnection())
-      inserted += len(j['items'])
+      changes = r.table(OrdersTable).insert(_items, durability="soft", return_changes=True, conflict="replace").run(getConnection())
+      inserted += len(_items)
 
       for change in changes['changes']:
 
@@ -237,13 +238,13 @@ def aggregatePortfolios():
 
               matQuantity = math.ceil(mat['quantity'] * _quantity * ((100 - efficiency) / 100))
 
+              matCost += float(re.hgetall('cur:'+str(mat['typeID']))[b'sellFifthPercentile']) * matQuantity
+              matCost = matCost + (matCost * systemIndex) + (matCost * systemIndex * taxRate)
+
               if mat['typeID'] in materials:
                 materials[mat['typeID']] += matQuantity
               else:
                 materials[mat['typeID']] = matQuantity
-
-              matCost += float(re.hgetall('cur:'+str(mat['typeID']))[b'sellFifthPercentile']) * matQuantity
-              matCost = matCost + (matCost * systemIndex) + (matCost * systemIndex * taxRate)
 
           totalMaterialCost += matCost
 
@@ -397,7 +398,7 @@ if __name__ == '__main__':
     for item in js['items']:
       item['$hz_v$'] = 0
 
-    items = js['items']
+    items = [k for k in js['items'] if (k['stationID'] == 60003760 or k['stationID'] > 1000000000000)]
   except:
     print("Failed initial crest loading")
     missingPages += 1
@@ -444,7 +445,8 @@ if __name__ == '__main__':
         orderIDs = [j for i, x in _results for j in i]
         missingPages += sum([x for i, x in _results])
 
-        orderIDs.extend([k['id'] for k in js['items']])
+        orderIDs.extend([k['id'] for k in items])
+
       except:
         print("Failed to load all order IDs")
         traceback.print_exc()
@@ -453,21 +455,25 @@ if __name__ == '__main__':
 
   print("Finished in %s seconds " % (time.perf_counter() - start))
 
+  print("Calculating existing order data")
+  calcOrdersTimer = time.perf_counter()
+
   _orderIDs = set(orderIDs)
 
   # Need to consider whether using 'volume entered' is better than using the current volume left
   # to get a better idea of totals
-  existingOrders = list(r.db(HorizonDB).table(OrdersTable).filter(lambda doc: (doc['stationID'] == 60003760) | (doc['stationID'] > 1000000000000)).pluck('id', 'volume', 'type', 'buy').run(getConnection(), array_limit=300000))
+  existingOrders = list(r.db(HorizonDB).table(OrdersTable).pluck('id', 'volume', 'type', 'buy').run(getConnection(), array_limit=300000))
 
   existingOrderVolume = dict([(d['id'],d['volume']) for d in existingOrders])
   existingOrderID2Type = dict([(d['id'],d['type']) for d in existingOrders])
   existingOrderID2Buy = dict([(d['id'],d['buy']) for d in existingOrders])
   existingOrderIDs = [i['id'] for i in existingOrders]
-  #existingOrderTypes = {i['type'] for i in existingOrders}
+
+  # TODO: Stale order detection is reliant on the 'existingOrders' variable, but its ignoring all orders outside jita 4-4 and citadels
 
   toDelete = [v for v in existingOrderIDs if v not in _orderIDs]
 
-  print(len(existingOrderIDs))
+  print("Data pulled in %s seconds" % (time.perf_counter() - calcOrdersTimer))
 
   # Group total volume by type
   print("Starting volume anomaly detection")
@@ -559,7 +565,7 @@ if __name__ == '__main__':
 
   # TODO Benchmark plucking only the 3 relevant fields
   aggregates = (r.table(OrdersTable)
-  .filter( lambda doc: (doc['buy'] == True) & (doc['price'] > 1 ) & ((doc['stationID'] == 60003760) | (doc['stationID'] > 1000000000000)) )
+  .filter( lambda doc: (doc['buy'] == True) & (doc['price'] > 1 ))
   .group("type")
   .map( lambda doc: { 
     'price': doc["price"], 'volume': doc["volume"] 
@@ -601,7 +607,7 @@ if __name__ == '__main__':
   })
   .union(
     r.table(OrdersTable)
-    .filter( lambda doc: (doc['buy'] == False) & ((doc['stationID'] == 60003760) | (doc['stationID'] > 1000000000000)) )
+    .filter( lambda doc: doc['buy'] == False)
     .group("type")
     .map( lambda doc: {
       'price': doc["price"], 'volume': doc["volume"]
