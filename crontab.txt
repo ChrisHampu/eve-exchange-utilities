@@ -1,6 +1,4 @@
 
-*/5 * * * * run-one python3 /home/ubuntu/eve-trade-forecaster-utilities/market_minutes.py evetradeforecaster orders_c98a169b2e36 aggregates_03f51ef8644c aggregates_hourly_b74979710e42 aggregates_daily_2bbd7a54bb62 >> /home/ubuntu/eve-trade-forecaster-utilities/market_minutes.log 2>&1
+*/5 * * * * run-one python3 /home/ubuntu/eve-trade-forecaster-utilities/market_minutes.py evetradeforecaster orders aggregates aggregates aggregates_daily user_settings user_orders portfolios >> /home/ubuntu/eve-trade-forecaster-utilities/market_minutes.log 2>&1
 
-#0 * * * * run-one python3 /home/ubuntu/eve-trade-forecaster-utilities/profit.py evetradeforecaster user_settings_664c29459b15 profit_chart_29cc89e8d92a profit_top_items_d07bb85eab8d profit_alltime_9c31cb979b5d profit_transactions_6ef25ec4929d >> /home/ubuntu/eve-trade-forecaster-utilities/profit.log 2>&1
-
-0 * * * * run-one python3 /home/ubuntu/eve-trade-forecaster-utilities/market_hours.py evetradeforecaster aggregates_03f51ef8644c >> /home/ubuntu/eve-trade-forecaster-utilities/market_hours.log 2>&1
+0 * * * * run-one python3 /home/ubuntu/eve-trade-forecaster-utilities/profit.py evetradeforecaster user_settings profit_chart profit_top_items profit_alltime profit_transactions >> /home/ubuntu/eve-trade-forecaster-utilities/profit.log 2>&1
