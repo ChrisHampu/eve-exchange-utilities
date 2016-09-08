@@ -185,6 +185,7 @@ def getMaterialsFromComponent(component):
 
 def aggregatePortfolios():
 
+  start = time.perf_counter()
   portfolioConnection = getConnection()
   systemIndex = 0.01
   taxRate = 0.10
@@ -325,7 +326,7 @@ def aggregatePortfolios():
       traceback.print_exc()
       print("Failed to update portfolio %s" % doc['portfolioID'])
 
-  print("Portfolios updated")
+  print("Portfolios updated in %s seconds" % (time.perf_counter() - start))
 
 if __name__ == '__main__':
 
