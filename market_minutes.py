@@ -249,7 +249,10 @@ def aggregatePortfolios():
 
           totalMaterialCost += matCost
 
-          buildSpread = 100 - (matCost / totalPrice) * 100
+          if totalPrice != 0:
+            buildSpread = 100 - (matCost / totalPrice) * 100
+          else:
+            buildSpread = 0
 
         totalSpread += spread
         totalVolume += volume
@@ -268,35 +271,50 @@ def aggregatePortfolios():
 
       materials = [{'typeID': k, 'quantity': materials[k]} for k in materials]
 
+      avgSpread = totalSpread / len(doc['components'])
+
       if startingValue == 0:
         startingValue = portfolioValue
 
-      avgSpread = totalSpread / len(doc['components'])
-      growth = 100 - (startingValue / portfolioValue) * 100 
+      compareValue = hourly[-1:][0]['portfolioValue'] if len(hourly) > 0 else portfolioValue
+
+      if portfolioValue != 0:
+        growth = 100 - (compareValue / portfolioValue) * 100 
+      else:
+        growth = 0
 
       if doc['type'] == 1:
         baseMinuteData = re.hgetall('cur:'+str(doc['industryTypeID']))
    
-        industrySpread = 100 - (portfolioValue / (float(baseMinuteData[b'sellFifthPercentile']) * doc['industryQuantity'])) * 100
+        if float(baseMinuteData[b'sellFifthPercentile']) != 0:
+          industrySpread = 100 - (portfolioValue / (float(baseMinuteData[b'sellFifthPercentile']) * doc['industryQuantity'])) * 100
+        else:
+          industrySpread = 0
+
         industryValue = float(baseMinuteData[b'sellFifthPercentile']) * doc['industryQuantity']
 
       else:
         industrySpread = 0
         industryValue = 0
 
+      hourlyResult = None
+
       # Hourly stats
       if tt.tm_min == 00:
 
         if doc['type'] == 0:
 
-          hourly.append({
+          hourlyResult = {
             'time': now,
             'portfolioValue': portfolioValue,
             'avgSpread': avgSpread,
             'growth': growth
-          })
+          }
+
+          hourly.append(hourlyResult)
         else:
-          hourly.append({
+
+          hourlyResult = {
             'time': now,
             'portfolioValue': portfolioValue,
             'avgSpread': avgSpread,
@@ -304,7 +322,28 @@ def aggregatePortfolios():
             'industrySpread': industrySpread,
             'profitValue': industryValue - portfolioValue,
             'materialValue': totalMaterialCost
-          })
+          }
+
+          hourly.append(hourlyResult)
+
+      if tt.tm_hour == 11 and tt.tm_min == 0:
+
+        if doc['type'] == 0:
+
+          newestHourly = hourly[:24]
+
+          if len(newestHourly) > 0:
+
+            oldest = newestHourly[0:1][0]
+            newest = newestHourly[-1:][0]
+
+            dailyGrowth = 100 - (oldest['portfolioValue'] / newest['portfolioValue']) * 100
+
+            newDaily = hourlyResult
+            newDaily['growth'] = dailyGrowth
+        else:
+
+          daily.append(hourlyResult)
 
       # 11 AM UTC (EVE downtime) - Daily stats
       #if (utt.tm_hour == 11 and useHourly == True):
@@ -316,6 +355,7 @@ def aggregatePortfolios():
         'industrySpread': industrySpread,
         'industryValue': industryValue,
         'hourlyChart': hourly,
+        'dailyChart': daily,
         'materials': materials,
         'materialCost': totalMaterialCost,
         'startingValue': startingValue,
