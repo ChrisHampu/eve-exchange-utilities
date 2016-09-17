@@ -207,6 +207,7 @@ if __name__ == '__main__':
     # create new top list
     if doc is None:
       
+      print("Creating new top items record for user %s" % _charID)
       r.table(TopitemsTable).insert({'$hz_v$': 0, 'userID': _charID, 'items': data}).run(horizon_conn)
 
     # modify/add to existing top list
