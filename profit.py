@@ -184,13 +184,13 @@ if __name__ == '__main__':
 
   r.table(ProfitChartTable).insert(results, durability="soft", return_changes=False, conflict="replace").run(horizon_conn)
 
-  userList = [[user['userID']] for user in settings if user['eveApiKey'] is not None and len(user['eveApiKey']['keyID']) > 0]
+  userList = [user['userID'] for user in settings if user['eveApiKey'] is not None and len(user['eveApiKey']['keyID']) > 0]
 
   top_items = list(r.table(TopitemsTable).get_all(r.args(userList), index='userID').run(horizon_conn))
 
   for charID in userList:
 
-    _charID = charID[0]
+    _charID = charID
 
     doc = next((x for x in top_items if x['userID'] == _charID), None)
 
