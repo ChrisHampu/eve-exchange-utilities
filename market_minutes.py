@@ -326,7 +326,7 @@ def aggregatePortfolios():
 
           hourly.append(hourlyResult)
 
-      if tt.tm_hour == 11 and tt.tm_min == 0:
+      if tt.tm_hour == 11 and tt.tm_min == 00:
 
         if doc['type'] == 0:
 
