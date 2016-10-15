@@ -332,6 +332,9 @@ class OrderInterface:
         # Wait for all the bulk operations to complete
         await asyncio.gather(*ops)
 
+        # Clean up temporary orders
+        self._orders = []
+
         # Load up all the new order data
         self._persisted_orders = await self.GetPersistedOrders()
 
@@ -471,6 +474,10 @@ class OrderInterface:
                         self._volume_changes[region][_type] += exist_orders_volume[i]
 
             print("%s volume changes for region %s" % (len(self._volume_changes[region]), region))
+
+        # Clean up orders that were pulled from DB for this task
+        self._existing_orders = []
+        self._persisted_orders = []
 
         print("Computed volume changes in %s seconds" % (time.perf_counter() - vol_timer))
 
