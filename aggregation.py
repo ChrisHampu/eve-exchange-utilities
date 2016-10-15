@@ -1436,6 +1436,8 @@ if __name__ == "__main__":
 
     loop = asyncio.get_event_loop()
 
+    print("Running at %s" % settings.utcnow)
+
     loop.run_until_complete(MarketAggregator().StartAggregation())
     loop.run_until_complete(PortfolioAggregator().aggregatePortfolios())
     loop.run_until_complete(ProfitAggregator().aggregateProfit())
