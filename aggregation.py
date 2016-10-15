@@ -201,7 +201,7 @@ class DeepstreamPublisher():
 
         try:
             await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
-                                                           'http://' + publish_url + '/publish/market/orders'))
+                                                           'http://' + publish_url + '/publish/market/orders', timeout=5))
         except:
             print("Error while publishing orders")
         print("Market orders published")
@@ -211,7 +211,7 @@ class DeepstreamPublisher():
 
         try:
             await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
-                                                           'http://' + publish_url + '/publish/market/minutes'))
+                                                           'http://' + publish_url + '/publish/market/minutes', timeout=5))
         except:
             print("Error while publishing minute aggregates")
         print("Minute aggregates published")
@@ -222,7 +222,7 @@ class DeepstreamPublisher():
 
         try:
             await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
-                                                           'http://' + publish_url + '/publish/market/hourly'))
+                                                           'http://' + publish_url + '/publish/market/hourly', timeout=5))
         except:
             print("Error while publishing hourly aggregates")
         print("Hourly aggregates published")
@@ -232,7 +232,7 @@ class DeepstreamPublisher():
 
         try:
             await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
-                                                           'http://' + publish_url + '/publish/market/daily'))
+                                                           'http://' + publish_url + '/publish/market/daily', timeout=5))
         except:
             print("Error while publishing daily aggregates")
         print("Daily aggregates published")
@@ -924,7 +924,7 @@ class PortfolioAggregator:
 
         try:
             await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
-                                                                                   'http://' + publish_url + '/publish/portfolios'))
+                                                                                   'http://' + publish_url + '/publish/portfolios', timeout=5))
         except:
             print("Error while publishing portfolios")
         print("Portfolios published")
@@ -1427,7 +1427,7 @@ class ProfitAggregator:
             await db.profit_transactions.insert(transactions)
 
         await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
-                                                                               'http://' + publish_url + '/publish/profit'))
+                                                                               'http://' + publish_url + '/publish/profit', timeout=5))
 
         print("Profits aggregated in %s seconds" % (time.perf_counter() - profit_start))
 
