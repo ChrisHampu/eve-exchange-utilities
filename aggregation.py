@@ -517,16 +517,17 @@ class OrderAggregator:
 
         if settings.is_hourly:
             await self.AggregateHourly()
+            await self._deepstream.PublishHourlyAggregates()
 
         if settings.is_daily:
             await self.AggregateDaily()
+            await self._deepstream.PublishDailyAggregates()
             await cache.LoadDailyRedisCache()
+
 
         await asyncio.gather(*[
             cache.LoadCurrentRedisCache(self._aggregates_minutes),
-            self._deepstream.PublishMinuteAggregates(),
-            self._deepstream.PublishHourlyAggregates(),
-            self._deepstream.PublishDailyAggregates()
+            self._deepstream.PublishMinuteAggregates()
         ])
 
     async def DoThreadedInsert(self, collection, data) -> None:
