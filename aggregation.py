@@ -18,7 +18,7 @@ except ImportError:
     import xml.etree.ElementTree as ET
 
 # Use to override timed operations
-development_mode = True
+development_mode = False
 publish_url = 'localhost:4501'
 
 # Load static data
@@ -79,7 +79,7 @@ settings = Settings()
 class DatabaseConnector:
     def __init__(self):
         self.client = motor_asyncio.AsyncIOMotorClient()
-        self.database = self.client.evetradeforecaster
+        self.database = self.client.eveexchange
         self.market_orders = self.database.orders
         self.aggregates_minutes = self.database.aggregates_minutes
         self.aggregates_hourly = self.database.aggregates_hourly
