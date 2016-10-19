@@ -272,6 +272,9 @@ class OrderInterface:
                 print("Failed to begin loading orders for region %s" % region)
                 continue
 
+            if self._page_count == 0:
+                continue
+
             # Initiate all the page loads async and wait for them
             await asyncio.gather(*[self.LoadPage(region, i) for i in range(2, self._page_count+1)])
 
@@ -292,6 +295,14 @@ class OrderInterface:
             traceback.print_exc()
             return
 
+        if 'items' not in js:
+            if self._page_count is None:
+                print("Failed initial load for region %s" % region)
+                self._page_count = 0
+            print("Failed to load page %s" % page)
+            self._failures += 1
+            return
+            
         orders = [{'price': k['price'], 'region': region, 'type': k['type'], 'volume': k['volume'], 'buy': k['buy'],
                    'time': k['issued'], 'id': k['id'], 'stationID': k['stationID']}
                   for k in js['items']]
