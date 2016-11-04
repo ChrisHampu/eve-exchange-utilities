@@ -996,10 +996,9 @@ class PortfolioAggregator:
                             if blueprints[str(component['typeID'])]['quantity'] > 1:
                                 _quantity = max(1, _quantity // blueprints[str(component['typeID'])]['quantity'])
 
-                        mats = self._getMaterialsFromComponent(component)
+                        mats = self.getMaterialsFromComponent(component)
 
                         if len(mats) == 0:
-
                             matCost += totalPrice
 
                         else:
@@ -1018,7 +1017,7 @@ class PortfolioAggregator:
 
                         totalMaterialCost += matCost
 
-                        if totalPrice != 0:
+                        if matCost != 0 and totalPrice != 0:
                             buildSpread = 100 - (matCost / totalPrice) * 100
                         else:
                             buildSpread = 0
