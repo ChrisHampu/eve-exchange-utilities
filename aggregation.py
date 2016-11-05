@@ -1099,7 +1099,7 @@ class PortfolioAggregator:
                 hourlyResult = None
 
                 # Hourly stats
-                if settings.is_hourly == 00:
+                if settings.is_hourly:
 
                     if doc['type'] == 0:
 
