@@ -92,6 +92,25 @@ class DatabaseConnector:
         self.profit_chart = self.database.profit_chart
         self.user_orders = self.database.user_orders
 
+        self.settings_cache = None
+
+    async def GetAllUserSettings(self) -> Dict:
+        if self.settings_cache is not None:
+            return self.settings_cache
+
+        self.settings_cache = {}
+
+        # Build a user id -> settings document map for easy access on demand
+        async for user in self.settings.find():
+
+            # Sanity check
+            if 'user_id' not in user:
+                continue
+
+            self.settings_cache[user['user_id']] = user
+
+        return self.settings_cache
+
 db = DatabaseConnector()
 
 
@@ -952,7 +971,7 @@ class PortfolioAggregator:
         start = time.perf_counter()
         systemIndex = 0.01
         taxRate = 0.10
-        region = 10000002
+        user_settings = await db.GetAllUserSettings()
 
         if not cache.RedisAvailable():
             print("Skipping portfolio aggregation since redis is unavailable")
@@ -972,6 +991,17 @@ class PortfolioAggregator:
                 daily = doc['dailyChart']
                 startingValue = doc['startingValue']
                 efficiency = doc['efficiency']
+                region = 10000002
+                user_id = doc['user_id']
+
+                if user_id not in user_settings:
+                    print("Can't retrieve user settings for user %s and portfolio %s" % (user_id, doc['portfolioID']))
+                    continue
+
+                if 'market' not in user_settings[user_id]:
+                    print("Defaulting region to Jita for user %s and portfolio %s" % (user_id, doc['portfolioID']))
+                elif 'region' in user_settings[user_id]['market']:
+                    region = user_settings[user_id]['market']['region']
 
                 for component in doc['components']:
 
@@ -1419,8 +1449,9 @@ class ProfitAggregator:
 
         profit_start = time.perf_counter()
         transactions = []
+        user_settings = await db.GetAllUserSettings()
 
-        async for user in db.settings.find():
+        for user in user_settings.values():
 
             if 'eveApiKey' not in user:
                 continue
