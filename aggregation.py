@@ -256,6 +256,7 @@ class DeepstreamPublisher():
             print("Error while publishing daily aggregates")
         print("Daily aggregates published")
 
+
 class OrderInterface:
     def __init__(self) -> None:
 
@@ -931,6 +932,7 @@ class MarketAggregator:
 
         print("Aggregation finished in %s seconds" % (time.perf_counter() - self._timer))
 
+
 class PortfolioAggregator:
     def __init__(self):
         pass
@@ -1169,6 +1171,7 @@ class PortfolioAggregator:
 
         print("Portfolios updated in %s seconds" % (time.perf_counter() - start))
 
+
 # TODO: add error checking to every single request
 class ProfitAggregator:
     def __init__(self):
@@ -1177,7 +1180,7 @@ class ProfitAggregator:
         self._sales = {} # char id -> [transactions]
         self._profits = {} # char id -> profit results
 
-    def getTransactions(self, char_id, eve_key, eve_vcode, fromID=None) -> List:
+    def getCharacterTransactions(self, char_id, eve_key, eve_vcode, fromID=None) -> List:
 
         auth = (char_id, eve_key, eve_vcode, self._rowCount, "" if fromID is None else "&fromID="+str(fromID))
         url = "https://api.eveonline.com/char/WalletTransactions.xml.aspx?characterID=%s&keyID=%s&vCode=%s&rowCount=%s%s" % auth
@@ -1188,20 +1191,41 @@ class ProfitAggregator:
             tree = ET.fromstring(req.text)
 
             if tree.find('error') is not None:
-                print("Error while pulling transactions")
+                print("Error while pulling character transactions")
                 return []
 
-            rows = list(tree.find('result').find('rowset'))
+            rows = [i for i in list(tree.find('result').find('rowset')) if i.attrib['transactionFor'] == 'personal']
 
         except:
             pass
 
         return rows
 
-    def getAllTransactions(self, char_id, eve_key, eve_vcode) -> List:
+    def getCorporationTransactions(self, wallet_key, eve_key, eve_vcode, fromID=None) -> List:
+
+        auth = (wallet_key, eve_key, eve_vcode, self._rowCount, "" if fromID is None else "&fromID="+str(fromID))
+        url = "https://api.eveonline.com/corp/WalletTransactions.xml.aspx?accountKey=%s&keyID=%s&vCode=%s&rowCount=%s%s" % auth
+        req = requests.get(url)
+        rows = []
+
+        try:
+            tree = ET.fromstring(req.text)
+
+            if tree.find('error') is not None:
+                print("Error while pulling corporation transactions")
+                return []
+
+            rows = [i for i in list(tree.find('result').find('rowset')) if i.attrib['transactionFor'] == 'corporation']
+
+        except:
+            pass
+
+        return rows
+
+    def getAllCharacterTransactions(self, char_id, eve_key, eve_vcode) -> List:
 
         fromID = None
-        journal = self.getTransactions(char_id, eve_key, eve_vcode, fromID)
+        journal = self.getCharacterTransactions(char_id, eve_key, eve_vcode, fromID)
 
         if len(journal) == 0:
             return []
@@ -1210,7 +1234,7 @@ class ProfitAggregator:
         lastPull = len(journal)
 
         while lastPull >= self._rowCount-1:
-            newJournal = self.getTransactions(char_id, eve_key, eve_vcode, fromID)
+            newJournal = self.getCharacterTransactions(char_id, eve_key, eve_vcode, fromID)
             lastPull = len(newJournal)
             if lastPull == 0:
                 break
@@ -1219,12 +1243,38 @@ class ProfitAggregator:
             fromID = newJournal[-1].attrib['transactionID']
 
         if lastPull > 0:
-            newJournal = self.getTransactions(char_id, eve_key, eve_vcode, fromID)
+            newJournal = self.getCharacterTransactions(char_id, eve_key, eve_vcode, fromID)
             journal.extend(newJournal)
 
         return journal
 
-    def getJournalEntries(self, char_id, eve_key, eve_vcode) -> List:
+    def getAllCorporationTransactions(self, wallet_key, eve_key, eve_vcode) -> List:
+
+        fromID = None
+        journal = self.getCorporationTransactions(wallet_key, eve_key, eve_vcode, fromID)
+
+        if len(journal) == 0:
+            return []
+
+        fromID = journal[-1].attrib['transactionID']
+        lastPull = len(journal)
+
+        while lastPull >= self._rowCount-1:
+            newJournal = self.getCorporationTransactions(wallet_key, eve_key, eve_vcode, fromID)
+            lastPull = len(newJournal)
+            if lastPull == 0:
+                break
+
+            journal.extend(newJournal)
+            fromID = newJournal[-1].attrib['transactionID']
+
+        if lastPull > 0:
+            newJournal = self.getCorporationTransactions(wallet_key, eve_key, eve_vcode, fromID)
+            journal.extend(newJournal)
+
+        return journal
+
+    def getCharacterJournalEntries(self, char_id, eve_key, eve_vcode) -> List:
 
         auth = (char_id, eve_key, eve_vcode)
         url = "https://api.eveonline.com/char/WalletJournal.xml.aspx?characterID=%s&keyID=%s&vCode=%s&rowCount=1000" % auth
@@ -1235,7 +1285,29 @@ class ProfitAggregator:
             tree = ET.fromstring(req.text)
 
             if tree.find('error') is not None:
-                print("Error while pulling transactions")
+                print("Error while pulling character journal")
+                return []
+
+            rows = list(tree.find('result').find('rowset'))
+        except:
+            pass
+
+        data = [{key:row.attrib[key] for key in ('amount', 'refTypeID', 'date')} for row in rows if time.strptime(row.attrib['date'], '%Y-%m-%d %H:%M:%S') > self._hour_offset]
+
+        return data
+
+    def getCorporationJournalEntries(self, wallet_key, eve_key, eve_vcode) -> List:
+
+        auth = (wallet_key, eve_key, eve_vcode)
+        url = "https://api.eveonline.com/corp/WalletJournal.xml.aspx?accountKey=%s&keyID=%s&vCode=%s&rowCount=1000" % auth
+        req = requests.get(url)
+        rows = []
+
+        try:
+            tree = ET.fromstring(req.text)
+
+            if tree.find('error') is not None:
+                print("Error while pulling corporation journal")
                 return []
 
             rows = list(tree.find('result').find('rowset'))
@@ -1248,14 +1320,27 @@ class ProfitAggregator:
 
     # user_id -> owner of the ETF account
     # char_id -> character to make API calls for
-    async def gatherProfitData(self, user_id, char_id, eve_key, eve_vcode):
+    # entity_name -> character name for transactions
+    async def gatherCharacterProfitData(self, user_id, char_id, entity_name, eve_key, eve_vcode):
 
-        rows = self.getAllTransactions(char_id, eve_key, eve_vcode)
-        journal = self.getJournalEntries(char_id, eve_key, eve_vcode)
+        rows = self.getAllCharacterTransactions(char_id, eve_key, eve_vcode)
+        journal = self.getCharacterJournalEntries(char_id, eve_key, eve_vcode)
+
+        await self.gatherProfitData(user_id, entity_name, rows, journal)
+
+    # wallet_key -> wallet division account key
+    async def gatherCorporationProfitData(self, user_id, wallet_key, entity_name, eve_key, eve_vcode):
+
+        rows = self.getAllCorporationTransactions(wallet_key, eve_key, eve_vcode)
+        journal = self.getCorporationJournalEntries(wallet_key, eve_key, eve_vcode)
+
+        await self.gatherProfitData(user_id, entity_name, rows, journal)
+
+    async def gatherProfitData(self, user_id, entity_name, transactions, journal):
 
         data = [{key: row.attrib[key] for key in (
             'typeName', 'journalTransactionID', 'transactionType', 'price', 'quantity', 'typeID',
-            'transactionDateTime')} for row in rows]
+            'transactionDateTime')} for row in transactions]
 
         sells = [x for x in data if
                  time.strptime(x['transactionDateTime'], '%Y-%m-%d %H:%M:%S') > self._hour_offset and x[
@@ -1265,10 +1350,6 @@ class ProfitAggregator:
         #            'transactionType'] == 'buy']
 
         groupedSells = dict()
-
-        result = {'user_id': user_id, 'profit': 0, 'taxes': 0, 'time': settings.utcnow,
-                  'frequency': 'hourly'}
-
         sales = list()
 
         for i in sells:
@@ -1284,20 +1365,31 @@ class ProfitAggregator:
                 print("No buy data for type ID %s" % typeID)
                 continue
 
-            profit = sum([float(x['price']) - float(buy['price']) for x in groupedSells[typeID]])
-            totalSell = sum([float(x['price']) for x in groupedSells[typeID]])
-            quantity = sum([int(x['quantity']) for x in groupedSells[typeID]])
+            salesCount = len(groupedSells[typeID])
+
+            if salesCount == 0:
+                continue
+
+            totalProfit = 0
+            quantity = 0
+
+            for x in groupedSells[typeID]:
+                price = float(x['price']) - float(buy['price'])
+                _sales = int(x['quantity'])
+
+                totalProfit += _sales * price
+                quantity += _sales
 
             sales.append({
                 'type': typeID,
                 'sellPrice': float(groupedSells[typeID][0]['price']),
                 'name': groupedSells[typeID][0]['typeName'],
-                'totalProfit': profit,
+                'totalProfit': totalProfit,
                 'quantity': quantity,
-                'avgPerUnit': profit / quantity,
-                'totalSell': totalSell,
+                'avgPerUnit': totalProfit / quantity,
                 'time': datetime.strptime(groupedSells[typeID][0]['transactionDateTime'],
-                                          '%Y-%m-%d %H:%M:%S').replace(tzinfo=settings.utcnow.tzinfo)
+                                          '%Y-%m-%d %H:%M:%S').replace(tzinfo=settings.utcnow.tzinfo),
+                'who': entity_name
             })
 
         taxEntries = [x for x in journal if x['refTypeID'] == '54']
@@ -1307,20 +1399,24 @@ class ProfitAggregator:
         broker = sum(float(x['amount']) for x in brokerEntries)
         totalProfit = sum(float(x['totalProfit']) for x in sales)
 
-        result['taxes'] = tax
-        result['broker'] = broker
-        result['profit'] = totalProfit
+        if user_id in self._sales:
+            self._sales[user_id].extend(sales)
+        else:
+            self._sales[user_id] = sales
 
-        self._sales[user_id] = sales
-        self._profits[user_id] = {'profit': result['profit'], 'taxes': result['taxes'],
-                                         'broker': result['broker']}
-        await db.profit_chart.insert(result)
+        if user_id in self._profits:
+            self._profits[user_id]['profit'] += totalProfit
+            self._profits[user_id]['taxes'] += tax
+            self._profits[user_id]['broker'] += broker
+        else:
+            self._profits[user_id] = {'profit': totalProfit, 'taxes': tax, 'broker': broker}
 
     async def updateTopItems(self, user_id) -> List:
         top_items = await db.profit_top_items.find_one({'user_id': user_id})
 
         sales = self._sales[user_id] if user_id in self._sales else None
 
+        # TODO: Update or omit message
         if sales is None:
             print("Failed to match sales results for user %s" % user_id)
             return []
@@ -1353,16 +1449,29 @@ class ProfitAggregator:
             await db.profit_top_items.find_and_modify({'user_id': user_id}, top_items)
 
         return [{**{key: row[key] for key in
-                                 ('totalProfit', 'quantity', 'avgPerUnit', 'time', 'name', 'type')},
+                                 ('totalProfit', 'quantity', 'avgPerUnit', 'time', 'name', 'type', 'who')},
                               **{'user_id': user_id}} for row in sales]
 
     async def updateAlltime(self, user_id):
 
         profit = self._profits[user_id] if user_id in self._profits else None
 
+        # TODO: Update or omit message
         if profit is None:
             print("Failed to match profit results for user %s" % user_id)
             return []
+
+        # Insert the hourly chart result for this run to be consumed right after
+        this_hourly_result = {
+            'user_id': user_id,
+            'time': settings.utcnow,
+            'frequency': 'hourly',
+            'profit': profit['profit'],
+            'taxes': profit['taxes'],
+            'broker': profit['broker']
+        }
+
+        await db.profit_chart.insert(this_hourly_result)
 
         alltime = await db.profit_all_time.find_one({'user_id': user_id})
 
@@ -1370,6 +1479,7 @@ class ProfitAggregator:
             print("User %s has no all time doc" % user_id)
 
         else:
+            # Aggregate past 24 hours of hourly docs
             hourly_chart = await db.profit_chart.find({'frequency': 'hourly', 'user_id': user_id}).sort('time', DESCENDING).limit(24).to_list(length=None)
 
             sumDocs = lambda docs: {'profit': sum([i['profit'] for i in docs]),
@@ -1410,7 +1520,7 @@ class ProfitAggregator:
                     }
                 })
 
-    async def loadUserOrders(self, user_id, char_id, eve_key, eve_vcode):
+    async def loadCharacterOrders(self, user_id, char_id, entity_name, eve_key, eve_vcode):
 
         auth = (char_id, eve_key, eve_vcode)
         url = "https://api.eveonline.com/char/MarketOrders.xml.aspx?characterID=%s&keyID=%s&vCode=%s" % auth
@@ -1424,7 +1534,7 @@ class ProfitAggregator:
 
             if tree.find('error') is not None:
                 print(tree.find('error').text)
-                print("Error while pulling user orders for user %s" % user_id)
+                print("Error while pulling character orders for user %s" % user_id)
                 return
 
             rows = [row for row in list(tree.find('result').find('rowset')) if row.attrib['orderState'] == '0']
@@ -1432,13 +1542,109 @@ class ProfitAggregator:
         except:
             pass
 
-        orders = [{**{k:row.attrib[k] for k in ('orderID', 'orderState', 'volRemaining', 'issued', 'minVolume', 'stationID', 'volEntered', 'typeID', 'bid', 'price')}, **{'user_id': user_id}} for row in rows]
+        orders = [{**{k:row.attrib[k] for k in ('orderID', 'orderState', 'volRemaining', 'issued', 'minVolume', 'stationID', 'volEntered', 'typeID', 'bid', 'price')}, **{'user_id': user_id, 'who': entity_name}} for row in rows]
 
         if len(orders) == 0:
             return
 
-        await db.user_orders.remove({'user_id': user_id})
         await db.user_orders.insert(orders)
+
+    async def loadCorporationOrders(self, user_id, wallet_key, entity_name, eve_key, eve_vcode):
+
+        auth = (eve_key, eve_vcode)
+        url = "https://api.eveonline.com/corp/MarketOrders.xml.aspx?keyID=%s&vCode=%s" % auth
+
+        req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
+
+        rows = []
+
+        try:
+            tree = ET.fromstring(req.text)
+
+            if tree.find('error') is not None:
+                print(tree.find('error').text)
+                print("Error while pulling corporation orders for user %s" % user_id)
+                return
+
+            rows = [row for row in list(tree.find('result').find('rowset')) if row.attrib['orderState'] == '0']
+
+        except:
+            pass
+
+        orders = [{**{k:row.attrib[k] for k in ('orderID', 'orderState', 'volRemaining', 'issued', 'minVolume', 'stationID', 'volEntered', 'typeID', 'bid', 'price')}, **{'user_id': user_id, 'who': entity_name}}
+                  for row in rows if row.attrib['accountKey'] == str(wallet_key)]
+
+        if len(orders) == 0:
+            return
+
+        await db.user_orders.insert(orders)
+
+    async def clearUserOrders(self, user_id):
+        await db.user_orders.remove({'user_id': user_id})
+
+    async def getCorporationBalance(self, user_id, wallet_key, eve_key, eve_vcode):
+
+        auth = (eve_key, eve_vcode)
+        url = "https://api.eveonline.com/corp/AccountBalance.xml.aspx?keyID=%s&vCode=%s" % auth
+
+        req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
+
+        try:
+            tree = ET.fromstring(req.text)
+
+            if tree.find('error') is not None:
+                print(tree.find('error').text)
+                print("Error while pulling corporation balance for user %s" % user_id)
+                return 0
+
+            rows = [row for row in list(tree.find('result').find('rowset'))]
+
+            for row in rows:
+                if row.attrib['accountKey'] == str(wallet_key):
+                    return float(row.attrib['balance'])
+
+        except:
+            pass
+
+        return 0
+
+    async def getCharacterBalance(self, user_id, char_id, eve_key, eve_vcode):
+
+        auth = (char_id, eve_key, eve_vcode)
+        url = "https://api.eveonline.com/char/AccountBalance.xml.aspx?characterID=%s&keyID=%s&vCode=%s" % auth
+
+        req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
+
+        try:
+            tree = ET.fromstring(req.text)
+
+            if tree.find('error') is not None:
+                print(tree.find('error').text)
+                print("Error while pulling character balance for user %s" % user_id)
+                return 0
+
+            rows = [row for row in list(tree.find('result').find('rowset'))]
+
+            for row in rows:
+                if row.attrib['accountKey'] == "1000": # Characters have a single wallet of key '1000'
+                    return float(row.attrib['balance'])
+
+        except:
+            pass
+
+        return 0
+
+    async def updateWalletBalance(self, user_id, profile_id, balance):
+
+        await db.settings.find_and_modify(
+            {
+                'user_id': user_id,
+                'profiles.id': profile_id
+            },
+            {
+                '$set': {'profiles.$.wallet_balance': balance}
+            }
+        )
 
     async def aggregateProfit(self):
 
@@ -1453,30 +1659,47 @@ class ProfitAggregator:
 
         for user in user_settings.values():
 
-            if 'eveApiKey' not in user:
-                continue
-
-            if len(user['eveApiKey']['keyID']) == 0 and len(user['eveApiKey']['vCode']) == 0:
+            # Check if user has been set up yet and has any API keys
+            if 'profiles' not in user:
                 continue
 
             user_id = user['user_id']
-            char_id = user['eveApiKey']['characterID']
-            eve_key = user['eveApiKey']['keyID']
-            eve_vcode = user['eveApiKey']['vCode']
 
-            await self.gatherProfitData(user_id, char_id, eve_key, eve_vcode)
+            await self.clearUserOrders(user_id)
+
+            for profile in user['profiles']:
+
+                _type = profile['type']
+                char_id = profile['character_id']
+                entity_name = profile['character_name'] if _type == 0 else profile['corporation_name']
+                eve_key = profile['key_id']
+                vcode = profile['vcode']
+                wallet_key = profile['wallet_key']
+
+                if _type == 0:
+                    await self.gatherCharacterProfitData(user_id, char_id, entity_name, eve_key, vcode)
+                    await self.loadCharacterOrders(user_id, char_id, entity_name, eve_key, vcode)
+
+                    wallet_balance = await self.getCharacterBalance(user_id, char_id, eve_key, vcode)
+                else:
+                    await self.gatherCorporationProfitData(user_id, wallet_key, entity_name, eve_key, vcode)
+                    await self.loadCorporationOrders(user_id, wallet_key, entity_name, eve_key, vcode)
+
+                    wallet_balance = await self.getCorporationBalance(user_id, wallet_key, eve_key, vcode)
+
+                await self.updateWalletBalance(user_id, profile['id'], wallet_balance)
 
             transactions.extend(await self.updateTopItems(user_id))
 
             await self.updateAlltime(user_id)
-
-            await self.loadUserOrders(user_id, char_id, eve_key, eve_vcode)
 
         if len(transactions) > 0:
             await db.profit_transactions.insert(transactions)
 
         await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
                                                                                'http://' + publish_url + '/publish/profit', timeout=5))
+        await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
+                                                                               'http://' + publish_url + '/publish/settings', timeout=5))
 
         print("Profits aggregated in %s seconds" % (time.perf_counter() - profit_start))
 
