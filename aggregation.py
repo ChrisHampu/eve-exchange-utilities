@@ -475,24 +475,31 @@ class OrderInterface:
 
                     _type = exist_orders_type[i]
 
+                    # Crude but should be effective enough for some items
+                    if _type == 29668 and exist_orders_volume[i] > 100:
+                        continue
+                    if _type == 40520 and exist_orders_volume[i] > 100:
+                        continue
+
                     # If the volume of this order exceeds the entirety of the rest of the order volume for this item,
                     # then its an outcast
-                    if exist_orders_buy[i]:
-                        _check = type_to_total_buy_volume[_type] - exist_orders_volume[i]
-                        if _check > 1:
-                            if exist_orders_volume[i] > _check:
-                                print("Order % of item %s exceeds realistic buy volume %s,%s" % (
-                                    i, _type, exist_orders_volume[i],
-                                    type_to_total_buy_volume[_type] - exist_orders_volume[i]))
-                                continue
-                    else:
-                        _check = type_to_total_sell_volume[_type] - exist_orders_volume[i]
-                        if _check > 1:
-                            if exist_orders_volume[i] > _check:
-                                print("Order % of item %s exceeds realistic sell volume %s,%s" % (
-                                    i, _type, exist_orders_volume[i],
-                                    type_to_total_sell_volume[_type] - exist_orders_volume[i]))
-                                continue
+                    if exist_orders_volume[i] > 10: # Ignore insignificant amounts
+                        if exist_orders_buy[i]:
+                            _check = type_to_total_buy_volume[_type] - exist_orders_volume[i]
+                            if _check > 1:
+                                if exist_orders_volume[i] > _check:
+                                    print("Order % of item %s exceeds realistic buy volume %s,%s" % (
+                                        i, _type, exist_orders_volume[i],
+                                        type_to_total_buy_volume[_type] - exist_orders_volume[i]))
+                                    continue
+                        else:
+                            _check = type_to_total_sell_volume[_type] - exist_orders_volume[i]
+                            if _check > 1:
+                                if exist_orders_volume[i] > _check:
+                                    print("Order % of item %s exceeds realistic sell volume %s,%s" % (
+                                        i, _type, exist_orders_volume[i],
+                                        type_to_total_sell_volume[_type] - exist_orders_volume[i]))
+                                    continue
 
                     if exist_orders_volume[i] > type_to_avg_volume[_type] * 100:
                         print("Order % of item %s exceeds realistic avg %s,%s" % (
