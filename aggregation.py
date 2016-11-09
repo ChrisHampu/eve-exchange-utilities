@@ -476,9 +476,9 @@ class OrderInterface:
                     _type = exist_orders_type[i]
 
                     # Crude but should be effective enough for some items
-                    if _type == 29668 and exist_orders_volume[i] > 100:
+                    if _type == 29668 and exist_orders_volume[i] > 25:
                         continue
-                    if _type == 40520 and exist_orders_volume[i] > 100:
+                    if _type == 40520 and exist_orders_volume[i] > 50:
                         continue
 
                     # If the volume of this order exceeds the entirety of the rest of the order volume for this item,
@@ -1333,17 +1333,17 @@ class ProfitAggregator:
         rows = self.getAllCharacterTransactions(char_id, eve_key, eve_vcode)
         journal = self.getCharacterJournalEntries(char_id, eve_key, eve_vcode)
 
-        await self.gatherProfitData(user_id, entity_name, rows, journal)
+        await self.gatherProfitData(user_id, 1000, char_id, entity_name, rows, journal)
 
     # wallet_key -> wallet division account key
-    async def gatherCorporationProfitData(self, user_id, wallet_key, entity_name, eve_key, eve_vcode):
+    async def gatherCorporationProfitData(self, user_id, corp_id, wallet_key, entity_name, eve_key, eve_vcode):
 
         rows = self.getAllCorporationTransactions(wallet_key, eve_key, eve_vcode)
         journal = self.getCorporationJournalEntries(wallet_key, eve_key, eve_vcode)
 
-        await self.gatherProfitData(user_id, entity_name, rows, journal)
+        await self.gatherProfitData(user_id, wallet_key, corp_id, entity_name, rows, journal)
 
-    async def gatherProfitData(self, user_id, entity_name, transactions, journal):
+    async def gatherProfitData(self, user_id, wallet_key, entity_id, entity_name, transactions, journal):
 
         data = [{key: row.attrib[key] for key in (
             'typeName', 'journalTransactionID', 'transactionType', 'price', 'quantity', 'typeID',
@@ -1396,7 +1396,9 @@ class ProfitAggregator:
                 'avgPerUnit': totalProfit / quantity,
                 'time': datetime.strptime(groupedSells[typeID][0]['transactionDateTime'],
                                           '%Y-%m-%d %H:%M:%S').replace(tzinfo=settings.utcnow.tzinfo),
-                'who': entity_name
+                'who': entity_name,
+                'whoID': entity_id,
+                'walletKey': wallet_key
             })
 
         taxEntries = [x for x in journal if x['refTypeID'] == '54']
@@ -1428,7 +1430,7 @@ class ProfitAggregator:
             print("Failed to match sales results for user %s" % user_id)
             return []
 
-        data = [{key: row[key] for key in ('totalProfit', 'quantity', 'avgPerUnit', 'type', 'name')} for row in
+        data = [{key: row[key] for key in ('totalProfit', 'quantity', 'avgPerUnit', 'type', 'name', 'who', 'whoID')} for row in
                 sales]
 
         # create new top list
@@ -1439,10 +1441,17 @@ class ProfitAggregator:
         else:
             for item in data:
 
+                # update a specifc item
                 find = [(i, j) for i, j in enumerate(top_items['items']) if j['type'] == item['type']]
 
                 if len(find) == 0:
-                    top_items['items'].append(item)
+                    top_items['items'].append({
+                        'totalProfit': item['totalProfit'],
+                        'quantity': item['quantity'],
+                        'type': item['type'],
+                        'name': item['name'],
+                        'avgPerUnit': item['avgPerUnit']
+                    })
 
                 else:
                     index, top = find[0]
@@ -1453,13 +1462,38 @@ class ProfitAggregator:
 
                     top_items['items'][index] = top
 
+                # update a char/corp profile
+
+                if 'profiles' not in top_items:
+                    top_items['profiles'] = [] # Upgrade a legacy document
+
+                find = [(i, j) for i, j in enumerate(top_items['profiles']) if j['whoID'] == item['whoID']]
+
+                if len(find) == 0:
+                    top_items['profiles'].append({
+                        'whoID': item['whoID'],
+                        'who': item['who'],
+                        'totalProfit': item['totalProfit'],
+                        'salesCount': 1,
+                        'avgProfit': item['totalProfit']
+                    })
+
+                else:
+                    index, top = find[0]
+
+                    top['totalProfit'] += item['totalProfit']
+                    top['salesCount'] += 1
+                    top['avgProfit'] = top['totalProfit'] / top['salesCount']
+
+                    top_items['profiles'][index] = top
+
             await db.profit_top_items.find_and_modify({'user_id': user_id}, top_items)
 
         return [{**{key: row[key] for key in
-                                 ('totalProfit', 'quantity', 'avgPerUnit', 'time', 'name', 'type', 'who')},
+                                 ('totalProfit', 'quantity', 'avgPerUnit', 'time', 'name', 'type', 'who', 'whoID')},
                               **{'user_id': user_id}} for row in sales]
 
-    async def updateAlltime(self, user_id):
+    async def updateAllTime(self, user_id):
 
         profit = self._profits[user_id] if user_id in self._profits else None
 
@@ -1549,14 +1583,15 @@ class ProfitAggregator:
         except:
             pass
 
-        orders = [{**{k:row.attrib[k] for k in ('orderID', 'orderState', 'volRemaining', 'issued', 'minVolume', 'stationID', 'volEntered', 'typeID', 'bid', 'price')}, **{'user_id': user_id, 'who': entity_name}} for row in rows]
+        orders = [{**{k:row.attrib[k] for k in ('orderID', 'orderState', 'volRemaining', 'issued', 'minVolume', 'stationID', 'volEntered', 'typeID', 'bid', 'price')},
+                   **{'user_id': user_id, 'who': entity_name, 'whoID': char_id}} for row in rows]
 
         if len(orders) == 0:
             return
 
         await db.user_orders.insert(orders)
 
-    async def loadCorporationOrders(self, user_id, wallet_key, entity_name, eve_key, eve_vcode):
+    async def loadCorporationOrders(self, user_id, wallet_key, entity_id, entity_name, eve_key, eve_vcode):
 
         auth = (eve_key, eve_vcode)
         url = "https://api.eveonline.com/corp/MarketOrders.xml.aspx?keyID=%s&vCode=%s" % auth
@@ -1578,7 +1613,8 @@ class ProfitAggregator:
         except:
             pass
 
-        orders = [{**{k:row.attrib[k] for k in ('orderID', 'orderState', 'volRemaining', 'issued', 'minVolume', 'stationID', 'volEntered', 'typeID', 'bid', 'price')}, **{'user_id': user_id, 'who': entity_name}}
+        orders = [{**{k:row.attrib[k] for k in ('orderID', 'orderState', 'volRemaining', 'issued', 'minVolume', 'stationID', 'volEntered', 'typeID', 'bid', 'price')},
+                   **{'user_id': user_id, 'who': entity_name, 'whoID': entity_id}}
                   for row in rows if row.attrib['accountKey'] == str(wallet_key)]
 
         if len(orders) == 0:
@@ -1678,6 +1714,7 @@ class ProfitAggregator:
 
                 _type = profile['type']
                 char_id = profile['character_id']
+                corp_id = profile['corporation_id']
                 entity_name = profile['character_name'] if _type == 0 else profile['corporation_name']
                 eve_key = profile['key_id']
                 vcode = profile['vcode']
@@ -1689,8 +1726,8 @@ class ProfitAggregator:
 
                     wallet_balance = await self.getCharacterBalance(user_id, char_id, eve_key, vcode)
                 else:
-                    await self.gatherCorporationProfitData(user_id, wallet_key, entity_name, eve_key, vcode)
-                    await self.loadCorporationOrders(user_id, wallet_key, entity_name, eve_key, vcode)
+                    await self.gatherCorporationProfitData(user_id, corp_id, wallet_key, entity_name, eve_key, vcode)
+                    await self.loadCorporationOrders(user_id, wallet_key, corp_id, entity_name, eve_key, vcode)
 
                     wallet_balance = await self.getCorporationBalance(user_id, wallet_key, eve_key, vcode)
 
@@ -1698,7 +1735,7 @@ class ProfitAggregator:
 
             transactions.extend(await self.updateTopItems(user_id))
 
-            await self.updateAlltime(user_id)
+            await self.updateAllTime(user_id)
 
         if len(transactions) > 0:
             await db.profit_transactions.insert(transactions)
