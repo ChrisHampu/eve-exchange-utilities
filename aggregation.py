@@ -1512,6 +1512,15 @@ class ProfitAggregator:
             'broker': profit['broker']
         }
 
+        # First load all hourly results
+        all_profit_hourly = await db.profit_chart.find({'frequency': 'hourly', 'user_id': user_id}).sort('time', DESCENDING).to_list(length=None)
+
+        # Purge anything older than 48 hours
+        if len(all_profit_hourly) >= 48:
+
+            await db.profit_chart.remove({'user_id': user_id, 'frequency': 'hourly', 'time': { '$lte': all_profit_hourly[:48][-1]['time'] }})
+
+        # Insert new result
         await db.profit_chart.insert(this_hourly_result)
 
         alltime = await db.profit_all_time.find_one({'user_id': user_id})
