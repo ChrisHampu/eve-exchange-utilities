@@ -20,6 +20,20 @@ except ImportError:
 # Use to override timed operations
 development_mode = False
 publish_url = 'localhost:4501'
+premiumCost = 150000000
+
+override_basePrice = {
+    11567: 85000000000,
+    3764: 85000000000,
+    671: 85000000000,
+    23773: 85000000000,
+    42126: 350000000000,
+    23919: 21000000000,
+    23917: 24000000000,
+    23913: 25000000000,
+    22852: 25000000000,
+    3514: 100000000000
+}
 
 # Load static data
 with open('sde/blueprints.js', 'r', encoding='utf-8') as f:
@@ -27,6 +41,12 @@ with open('sde/blueprints.js', 'r', encoding='utf-8') as f:
 
 with open('sde/market_ids.js', 'r', encoding='utf-8') as f:
     market_ids = json.loads(f.read())
+
+with open('sde/blueprint_basePrice.js', 'r', encoding='utf-8') as f:
+    blueprints_basePrice = json.loads(f.read())
+
+    for i in blueprints_basePrice:
+        override_basePrice[int(i)] = blueprints_basePrice[i]
 
 class Settings:
     def __init__(self):
@@ -91,6 +111,8 @@ class DatabaseConnector:
         self.profit_transactions = self.database.profit_transactions
         self.profit_chart = self.database.profit_chart
         self.user_orders = self.database.user_orders
+        self.subscription = self.database.subscription
+        self.notifications = self.database.notifications
 
         self.settings_cache = None
 
@@ -274,6 +296,16 @@ class OrderInterface:
     @property
     def regions(self):
         return [10000002, 10000043, 10000032, 10000042, 10000030]  # Forge (Jita), Domain (Amarr), Sinq (Dodixie), Hek, Rens
+
+    @property
+    def regionToStationHub(self, region):
+        return {
+            10000002: 60003760,
+            10000043: 60008494,
+            10000032: 60011794,
+            10000042: 60005686,
+            10000030: 60004588
+        }.get(region, 0)
 
     async def LoadAllOrders(self) -> None:
 
@@ -514,8 +546,11 @@ class OrderInterface:
             print("%s volume changes for region %s" % (len(self._volume_changes[region]), region))
 
         # Clean up orders that were pulled from DB for this task
+        self._deleted_orders = []
         self._existing_orders = []
-        self._persisted_orders = []
+
+        # Persisted orders will be used in portfolio aggregation to get top order prices
+        #self._persisted_orders = []
 
         print("Computed volume changes in %s seconds" % (time.perf_counter() - vol_timer))
 
@@ -681,6 +716,8 @@ class OrderAggregator:
                 if _type in self._interface.GetVolumeChanges()[region]:
                     tradeVolume = self._interface.GetVolumeChanges()[region][_type]
 
+            override = {'buyPercentile': override_basePrice[_type], 'sellPercentile': override_basePrice[_type], 'spread': 0} if _type in override_basePrice else {}
+
             if _type not in accumulator:
                 accumulator[_type] = {
                     'time': settings.utcnow,
@@ -690,8 +727,8 @@ class OrderAggregator:
                             'region': region,
                             'tradeVolume': tradeVolume,
                             'tradeValue': tradeVolume * i['spreadValue'],
-                            **{key:value for key, value in i.items() if key not in {'_id'}}
-
+                            **{key:value for key, value in i.items() if key not in {'_id'}},
+                            **override
                         }
                     ]
                 }
@@ -701,7 +738,8 @@ class OrderAggregator:
                         'region': i['_id']['region'],
                         'tradeVolume': tradeVolume,
                         'tradeValue': tradeVolume * i['spreadValue'],
-                        **{key: value for key, value in i.items() if key not in {'_id'}}
+                        **{key: value for key, value in i.items() if key not in {'_id'}},
+                        **override
                     }
                 )
 
@@ -910,9 +948,11 @@ class OrderAggregator:
     def aggregates_daily(self) -> List[Dict]:
         return self._aggregates_daily
 
+orderInterface = OrderInterface()
+
 class MarketAggregator:
     def __init__(self):
-        self._order_interface = OrderInterface()
+        self._order_interface = orderInterface
         self._deepstream = DeepstreamPublisher()
         self._order_aggregator = OrderAggregator(self._order_interface, self._deepstream)
         self._timer = time.perf_counter()
@@ -942,7 +982,25 @@ class MarketAggregator:
 
 class PortfolioAggregator:
     def __init__(self):
+        self.adjusted_prices = None
+        self.simulation_cache = {}
         pass
+
+    def getAdjustedPrices(self):
+        if self.adjusted_prices is None:
+            self.adjusted_prices = {}
+
+            try:
+                req = requests.get('https://esi.tech.ccp.is/latest/markets/prices/?datasource=tranquility')
+
+                prices = req.json()
+
+                for item in prices:
+                    self.adjusted_prices[item['type_id']] = item['adjusted_price']
+            except:
+                print("Failed to load adjusted prices from ESI API")
+
+        return self.adjusted_prices
 
     def _getMaterialsFromComponent(self, component):
         _materials = []
@@ -976,11 +1034,68 @@ class PortfolioAggregator:
             print("Error while publishing portfolios")
         print("Portfolios published")
 
+    def doSimulateTrade(self, _type, quantity, _buy_price, _sell_price, simulation_settings, region):
+
+        buy_price = _buy_price
+        sell_price = _sell_price
+
+        if simulation_settings['strategy'] == 0:
+
+            if _type in self.simulation_cache:
+                cached = self.simulation_cache[_type]
+
+                buy_price = cached['buy_price']
+                sell_price = cached['sell_price']
+            else:
+                buy_price = max(filter(lambda doc: doc['buy'] == True, orderInterface._persisted_orders), key=lambda val: val['price'])
+                sell_price = min( filter(lambda doc: doc['buy'] == False, orderInterface._persisted_orders), key=lambda val: val['price'])
+
+                self.simulation_cache[_type] = {
+                    'buy_price': buy_price,
+                    'sell_price': sell_price
+                }
+
+        buy_price = buy_price * quantity
+        sell_price = sell_price * quantity
+
+        if simulation_settings['margin'] > 0:
+            if simulation_settings['margin_type'] == 0:
+
+                buy_price = buy_price + simulation_settings['margin']
+                sell_price = sell_price - simulation_settings['margin']
+
+            else:
+                buy_price = buy_price + buy_price * simulation_settings['margin'] / 100
+                sell_price = sell_price - sell_price * simulation_settings['margin'] / 100
+
+        broker = buy_price * simulation_settings['broker_fee'] / 100 if simulation_settings['broker_fee'] > 0 else 0
+        tax = sell_price * simulation_settings['sales_tax'] / 100 if simulation_settings['sales_tax'] > 0 else 0
+
+        profit = sell_price - buy_price - tax - broker
+
+        if simulation_settings['wanted_margin'] > 0:
+
+            multiplier = simulation_settings['wanted_margin'] / 100
+
+            wanted_profit = (buy_price + tax + broker + simulation_settings['overhead']) * multiplier
+
+            profit = wanted_profit
+            sell_price = buy_price + wanted_profit
+
+        return {
+            'buy': buy_price,
+            'sell': sell_price,
+            'tax': tax,
+            'broker': broker,
+            'profit': profit
+        }
+
     async def aggregatePortfolios(self):
         start = time.perf_counter()
         systemIndex = 0.01
         taxRate = 0.10
         user_settings = await db.GetAllUserSettings()
+        adjustedPrices = self.getAdjustedPrices()
 
         if not cache.RedisAvailable():
             print("Skipping portfolio aggregation since redis is unavailable")
@@ -996,11 +1111,12 @@ class PortfolioAggregator:
                 totalMaterialCost = 0
                 totalInstallCost = 0
                 portfolioValue = 0
+                portfolioBuyValue = 0
                 hourly = doc['hourlyChart']
                 daily = doc['dailyChart']
                 startingValue = doc['startingValue']
                 efficiency = doc['efficiency']
-                region = 10000002
+                region = 10000002 # default region
                 user_id = doc['user_id']
 
                 if user_id not in user_settings:
@@ -1014,26 +1130,34 @@ class PortfolioAggregator:
 
                 for component in doc['components']:
 
-                    minuteData = cache.redis.hgetall('cur:' + str(component['typeID']) + '-' + str(region))
-                    dailyData = cache.redis.hgetall('dly:' + str(component['typeID']) + '-' + str(region))
+                    # TODO: Verify redis data is existent and correct
+                    typeID = component['typeID']
+                    typeIDStr = str(typeID)
+                    minuteData = cache.redis.hgetall('cur:' + typeIDStr + '-' + str(region))
+                    dailyData = cache.redis.hgetall('dly:' + typeIDStr + '-' + str(region))
 
                     unitPrice = float(minuteData[b'sellPercentile'])
-                    totalPrice = unitPrice * component['quantity'];
+                    portfolioBuyValue += float(minuteData[b'buyPercentile']) * component['quantity']
+                    adjustedPrice = adjustedPrices[typeID] if typeID in adjustedPrices else unitPrice
+                    totalPrice = unitPrice * component['quantity']
+                    totalAdjustedPrice = adjustedPrice * component['quantity']
                     spread = float(minuteData[b'spread'])
                     volume = float(dailyData[b'tradeVolume'])
                     matCost = 0
                     buildSpread = 0
+                    simulation = None
 
                     if doc['type'] == 1:
 
                         # Installation cost/tax for the main blueprint itself
-                        totalInstallCost += (totalPrice * systemIndex) + (totalPrice * systemIndex * taxRate)
+                        # TODO: The install cost needs to use the base quantity of the component before the efficiency
+                        totalInstallCost += totalAdjustedPrice
 
                         _quantity = component['quantity']
 
-                        if str(component['typeID']) in blueprints:
-                            if blueprints[str(component['typeID'])]['quantity'] > 1:
-                                _quantity = max(1, _quantity // blueprints[str(component['typeID'])]['quantity'])
+                        if typeIDStr in blueprints:
+                            if blueprints[typeIDStr]['quantity'] > 1:
+                                _quantity = max(1, _quantity // blueprints[typeIDStr]['quantity'])
 
                         mats = self.getMaterialsFromComponent(component)
 
@@ -1061,6 +1185,42 @@ class PortfolioAggregator:
                         else:
                             buildSpread = 0
 
+                    elif doc['type'] == 0:
+
+                        simulation_settings = {
+                            'strategy': 0,
+                            'margin_type': 0,
+                            'sales_tax': 0,
+                            'broker_fee': 0,
+                            'margin': 0,
+                            'wanted_margin': 0,
+                            'overhead': 0
+                        }
+
+                        if 'market' in user_settings[user_id]:
+
+                            market_settings = user_settings[user_id]['market']
+
+                            if 'simulation_strategy' in market_settings:
+                                simulation_settings['strategy'] = market_settings['simulation_strategy']
+
+                            if 'simulation_margin_type' in market_settings:
+                                simulation_settings['margin_type'] = market_settings['simulation_margin_type']
+
+                            if 'simulation_sales_tax' in market_settings:
+                                simulation_settings['sales_tax'] = market_settings['simulation_sales_tax']
+
+                            if 'simulation_broker_fee' in market_settings:
+                                simulation_settings['broker_fee'] = market_settings['simulation_broker_fee']
+
+                            if 'simulation_margin' in market_settings:
+                                simulation_settings['margin'] = market_settings['simulation_margin']
+
+                            if 'simulation_wanted_profit' in market_settings:
+                                simulation_settings['wanted_margin'] = market_settings['simulation_wanted_profit']
+
+                        simulation = self.doSimulateTrade(typeID, component['quantity'], float(minuteData[b'buyPercentile']), float(minuteData[b'sellPercentile']), simulation_settings, region)
+
                     totalSpread += spread
                     totalVolume += volume
                     portfolioValue += totalPrice
@@ -1073,7 +1233,8 @@ class PortfolioAggregator:
                         'typeID': component['typeID'],
                         'quantity': component['quantity'],
                         'materialCost': matCost,
-                        'buildSpread': buildSpread
+                        'buildSpread': buildSpread,
+                        'simulation': simulation
                     })
 
                 materials = [{'typeID': k, 'quantity': materials[k]} for k in materials]
@@ -1100,6 +1261,8 @@ class PortfolioAggregator:
                         industrySpread = 0
 
                     industryValue = float(baseMinuteData[b'sellPercentile']) * doc['industryQuantity']
+
+                    totalInstallCost = (totalInstallCost * systemIndex) + (totalInstallCost * systemIndex * taxRate)
 
                 else:
                     industrySpread = 0
@@ -1157,6 +1320,7 @@ class PortfolioAggregator:
                 await db.portfolios.find_and_modify({'_id': ObjectId(oid=doc['_id'])}, {
                     '$set': {
                         'currentValue': portfolioValue,
+                        'currentBuyValue': portfolioBuyValue,
                         'averageSpread': avgSpread,
                         'components': components,
                         'industrySpread': industrySpread,
