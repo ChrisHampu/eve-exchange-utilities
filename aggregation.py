@@ -1051,8 +1051,11 @@ class PortfolioAggregator:
                 buy_price = cached['buy_price']
                 sell_price = cached['sell_price']
             else:
-                buy_price = max(filter(lambda doc: doc['buy'] == True, orderInterface._persisted_orders), key=lambda val: val['price'])
-                sell_price = min( filter(lambda doc: doc['buy'] == False, orderInterface._persisted_orders), key=lambda val: val['price'])
+
+                orders = [order for order in orderInterface._persisted_orders if order['type'] == _type and order['region'] == region]
+
+                buy_price = max([order['price'] for order in orders if order['buy'] == True])
+                sell_price = min([order['price'] for order in orders if order['buy'] == False])
 
                 self.simulation_cache[_type] = {
                     'buy_price': buy_price,
@@ -1136,7 +1139,8 @@ class PortfolioAggregator:
 
                     # TODO: Verify redis data is existent and correct
                     typeID = component['typeID']
-                    typeIDStr = str(typeID)
+                    typeIDStr = str(int(typeID))
+
                     minuteData = cache.redis.hgetall('cur:' + typeIDStr + '-' + str(region))
                     dailyData = cache.redis.hgetall('dly:' + typeIDStr + '-' + str(region))
 
