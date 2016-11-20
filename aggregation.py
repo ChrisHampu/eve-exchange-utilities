@@ -307,6 +307,10 @@ class OrderInterface:
             10000030: 60004588
         }.get(region, 0)
 
+    @property
+    def hubs(self):
+        return [60003760, 60008494, 60011794, 60005686, 60004588]
+
     async def LoadAllOrders(self) -> None:
 
         print("Loading all market orders")
@@ -357,7 +361,7 @@ class OrderInterface:
             
         orders = [{'price': k['price'], 'region': region, 'type': k['type'], 'volume': k['volume'], 'buy': k['buy'],
                    'time': k['issued'], 'id': k['id'], 'stationID': k['stationID']}
-                  for k in js['items']]
+                  for k in js['items'] if (k['stationID'] in self.hubs or k['stationID'] >= 1000000000000)]
 
         if self._page_count is None:
             self._page_count = js['pageCount']
@@ -1920,6 +1924,114 @@ class ProfitAggregator:
 
         print("Profits aggregated in %s seconds" % (time.perf_counter() - profit_start))
 
+class SubscriptionUpdater:
+    def __init__(self):
+        pass
+
+    async def checkExpired(self):
+
+        user_settings = await db.GetAllUserSettings()
+
+        sub_notification = {
+            "user_id": 0,
+            "time": settings.utcnow,
+            "read": False,
+            "message": ""
+        }
+
+        async for sub in db.subscription.find():
+
+            user = user_settings.get(sub['user_id'], None)
+
+            if user is None:
+                print("Failed to find user settings for user %s" % sub['user_id'])
+                continue
+
+            if 'subscription_date' not in sub or 'premium' not in sub:
+                continue
+
+            if sub['subscription_date'] is None:
+                continue
+
+            if sub['premium'] == False:
+                continue
+
+            if settings.utcnow - sub['subscription_date'] > timedelta(days=30):
+
+                renew = True
+                premium = True
+
+                sub_notification['user_id'] = sub['user_id']
+
+                if 'general' in user:
+                    if 'auto_renew' in user['general']:
+                        renew = True if user['general']['auto_renew'] == True else False
+
+                if renew == True:
+
+                    if sub['balance'] < premiumCost:
+                        premium = False
+
+                else:
+                    premium = False
+
+                if premium == True:
+
+                    print("Renewing subscription for user %s " % sub['user_name'])
+                    sub_notification['message'] = 'Your premium subscription has been automatically renewed'
+
+
+                    await db.subscription.find_and_modify({'user_id': sub['user_id']}, {
+                        '$set': {
+                            'subscription_date': settings.utcnow
+                        },
+                        '$inc': {
+                            'balance': -premiumCost
+                        },
+                        '$push': {
+                            'history': {
+                                'time': settings.utcnow,
+                                'type': 1,
+                                'amount': premiumCost,
+                                'description': 'Subscription renewal',
+                                'processed': True
+                            }
+                        }
+                    })
+
+
+                else:
+
+                    print("Ending subscription for user %s " % sub['user_name'])
+                    sub_notification['message'] = 'Your premium subscription has expired and not automatically renewed'
+
+                    await db.subscription.find_and_modify({'user_id': sub['user_id']}, {
+                        '$set': {
+                            'premium': False,
+                            'subscription_date': None
+                        }
+                    })
+
+                    await db.settings.find_and_modify({'user_id': sub['user_id']}, {
+                        '$set': {
+                            'premium': False,
+                        },
+                    })
+
+                    await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
+                                                                                         'http://' + publish_url + '/publish/settings/%s' % sub['user_id'],
+                                                                                         timeout=5))
+
+                await db.notifications.insert(sub_notification)
+
+                await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
+                                                                                       'http://' + publish_url + '/publish/notifications/%s' % sub['user_id'],
+                                                                                       timeout=5))
+
+                await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
+                                                                                 'http://' + publish_url + '/publish/subscription/%s' % sub['user_id'],
+                                                                                 timeout=5))
+
 if __name__ == "__main__":
 
     loop = asyncio.get_event_loop()
@@ -1929,5 +2041,6 @@ if __name__ == "__main__":
     loop.run_until_complete(MarketAggregator().StartAggregation())
     loop.run_until_complete(PortfolioAggregator().aggregatePortfolios())
     loop.run_until_complete(ProfitAggregator().aggregateProfit())
+    loop.run_until_complete(SubscriptionUpdater().checkExpired())
 
     loop.close()
