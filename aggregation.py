@@ -113,6 +113,7 @@ class DatabaseConnector:
         self.user_orders = self.database.user_orders
         self.subscription = self.database.subscription
         self.notifications = self.database.notifications
+        self.audit = self.database.audit_log
 
         self.settings_cache = None
 
@@ -1054,8 +1055,11 @@ class PortfolioAggregator:
 
                 orders = [order for order in orderInterface._persisted_orders if order['type'] == _type and order['region'] == region]
 
-                buy_price = max([order['price'] for order in orders if order['buy'] == True])
-                sell_price = min([order['price'] for order in orders if order['buy'] == False])
+                buy_orders = [order['price'] for order in orders if order['buy'] == True]
+                sell_orders = [order['price'] for order in orders if order['buy'] == False]
+
+                buy_price = max(buy_orders) if len(buy_orders) > 0 else _buy_price
+                sell_price = min(sell_orders) if len(sell_orders) > 0 else _sell_price
 
                 self.simulation_cache[_type] = {
                     'buy_price': buy_price,
@@ -2003,6 +2007,13 @@ class SubscriptionUpdater:
                         }
                     })
 
+                    await db.audit.insert({
+                        'user_id': sub['user_id'],
+                        'target': 0,
+                        'balance': 0,
+                        'action': 4,
+                        'time': datetime.now()
+                    })
 
                 else:
 
@@ -2022,6 +2033,14 @@ class SubscriptionUpdater:
                         },
                     })
 
+                    await db.audit.insert({
+                        'user_id': sub['user_id'],
+                        'target': 0,
+                        'balance': 0,
+                        'action': 9,
+                        'time': datetime.now()
+                    })
+
                     await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
                                                                                          'http://' + publish_url + '/publish/settings/%s' % sub['user_id'],
                                                                                          timeout=5))
@@ -2034,6 +2053,10 @@ class SubscriptionUpdater:
 
                 await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
                                                                                  'http://' + publish_url + '/publish/subscription/%s' % sub['user_id'],
+                                                                                 timeout=5))
+
+                await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
+                                                                                 'http://' + publish_url + '/publish/audit',
                                                                                  timeout=5))
 
 if __name__ == "__main__":
