@@ -1148,7 +1148,8 @@ class PortfolioAggregator:
                     minuteData = cache.redis.hgetall('cur:' + typeIDStr + '-' + str(region))
                     dailyData = cache.redis.hgetall('dly:' + typeIDStr + '-' + str(region))
 
-                    unitPrice = float(minuteData[b'sellPercentile'])
+                    # Sell value for trading and buy value for industry (buying an item)
+                    unitPrice = float(minuteData[b'sellPercentile']) if doc['type'] == 0 else float(minuteData[b'buyPercentile'])
                     portfolioBuyValue += float(minuteData[b'buyPercentile']) * component['quantity']
                     adjustedPrice = adjustedPrices[typeID] if typeID in adjustedPrices else unitPrice
                     totalPrice = unitPrice * component['quantity']
@@ -1182,7 +1183,7 @@ class PortfolioAggregator:
                                 matQuantity = math.ceil(mat['quantity'] * _quantity * ((100 - efficiency) / 100))
 
                                 matCost += float(
-                                    cache.redis.hgetall('cur:' + str(mat['typeID']) + '-' + str(region))[b'sellPercentile']) * matQuantity
+                                    cache.redis.hgetall('cur:' + str(mat['typeID']) + '-' + str(region))[b'buyPercentile']) * matQuantity
                                 matCost = matCost + (matCost * systemIndex) + (matCost * systemIndex * taxRate)
 
                                 if mat['typeID'] in materials:
@@ -1892,18 +1893,27 @@ class ProfitAggregator:
                 continue
 
             user_id = user['user_id']
+            profiles_calculated = 0
 
             await self.clearUserOrders(user_id)
 
             for profile in user['profiles']:
 
                 _type = profile['type']
+
+                if _type == 1 and user['premium'] == False:
+                    continue
+
+                if profiles_calculated >= 5 and user['premium'] == False:
+                    break
+
                 char_id = profile['character_id']
                 corp_id = profile['corporation_id']
                 entity_name = profile['character_name'] if _type == 0 else profile['corporation_name']
                 eve_key = profile['key_id']
                 vcode = profile['vcode']
                 wallet_key = profile['wallet_key']
+                profiles_calculated += 1
 
                 if _type == 0:
                     await self.gatherCharacterProfitData(user_id, char_id, entity_name, eve_key, vcode)
