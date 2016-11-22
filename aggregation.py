@@ -224,7 +224,7 @@ class CacheInterface:
             # Keys use both the type ID and region for efficiency in retrieval, and to avoid nesting
             for v in aggregates:
                 for reg in v['regions']:
-                    self._redis.hmset('cur:' + str(v['type']) + '-' + str(reg['region']), {**reg, **{'type': v}})
+                    self._redis.hmset('cur:' + str(v['type']) + '-' + str(reg['region']), {**reg, **{'type': v['type']}})
         except:
             traceback.print_exc()
             print("Failed to update current redis cache")
