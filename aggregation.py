@@ -210,7 +210,7 @@ class CacheInterface:
 
         for k in dailyDocs:
             for reg in dailyDocs[k]['regions']:
-                self._redis.hmset('dly:' + str(k) + '-' + str(reg['region']), reg)
+                self._redis.hmset('dly:' + str(k) + '-' + str(reg['region']), {**reg, **{'type': k}})
 
         print("Loaded %s daily documents into cache in %s seconds" % (len(dailyDocs), time.perf_counter() - loadTimer))
 
@@ -224,7 +224,7 @@ class CacheInterface:
             # Keys use both the type ID and region for efficiency in retrieval, and to avoid nesting
             for v in aggregates:
                 for reg in v['regions']:
-                    self._redis.hmset('cur:' + str(v['type']) + '-' + str(reg['region']), reg)
+                    self._redis.hmset('cur:' + str(v['type']) + '-' + str(reg['region']), {**reg, **{'type': v}})
         except:
             traceback.print_exc()
             print("Failed to update current redis cache")
