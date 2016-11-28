@@ -482,6 +482,10 @@ class OrderInterface:
                 # Pre-compute some basic data
                 for i in filter_by_region(self._existing_orders, region):
 
+                    # Ignore worthless orders
+                    if i['price'] < 10:
+                        continue
+
                     _type = i['type']
 
                     if _type not in type_to_avg_volume:
@@ -489,7 +493,7 @@ class OrderInterface:
                     else:
                         type_to_avg_volume[_type].append(i['volume'])
 
-                    if i['buy']:
+                    if i['buy'] == True:
                         if _type not in type_to_total_buy_volume:
                             type_to_total_buy_volume[_type] = i['volume']
                         else:
@@ -523,7 +527,10 @@ class OrderInterface:
                     # then its an outcast
                     if exist_orders_volume[i] > 10: # Ignore insignificant amounts
                         if exist_orders_buy[i]:
-                            _check = type_to_total_buy_volume[_type] - exist_orders_volume[i]
+                            if _type not in type_to_total_buy_volume:
+                                _check = 0
+                            else:
+                                _check = type_to_total_buy_volume[_type] - exist_orders_volume[i]
                             if _check > 1:
                                 if exist_orders_volume[i] > _check:
                                     print("Order % of item %s exceeds realistic buy volume %s,%s" % (
@@ -531,7 +538,10 @@ class OrderInterface:
                                         type_to_total_buy_volume[_type] - exist_orders_volume[i]))
                                     continue
                         else:
-                            _check = type_to_total_sell_volume[_type] - exist_orders_volume[i]
+                            if _type not in type_to_total_sell_volume:
+                                _check = 0
+                            else:
+                                _check = type_to_total_sell_volume[_type] - exist_orders_volume[i]
                             if _check > 1:
                                 if exist_orders_volume[i] > _check:
                                     print("Order % of item %s exceeds realistic sell volume %s,%s" % (
@@ -539,10 +549,11 @@ class OrderInterface:
                                         type_to_total_sell_volume[_type] - exist_orders_volume[i]))
                                     continue
 
-                    if exist_orders_volume[i] > type_to_avg_volume[_type] * 100:
-                        print("Order % of item %s exceeds realistic avg %s,%s" % (
-                            i, _type, exist_orders_volume[i], type_to_avg_volume[_type]))
-                        continue
+                    if _type in type_to_avg_volume:
+                        if exist_orders_volume[i] > type_to_avg_volume[_type] * 10:
+                            print("Order % of item %s exceeds realistic avg %s,%s" % (
+                                i, _type, exist_orders_volume[i], type_to_avg_volume[_type] * 10))
+                            continue
 
                     if _type not in self._volume_changes[region]:
                         self._volume_changes[region][_type] = exist_orders_volume[i]
