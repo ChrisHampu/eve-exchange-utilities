@@ -1876,6 +1876,130 @@ class ProfitAggregator:
             }
         )
 
+    async def verifyKey(self, user_id, char_id, corp_id, _type, eve_key, eve_vcode, error):
+
+        verified = True
+        entity = None
+        message = "There was a problem with looking up your API key. Please verify that this key still exists"
+        auth = (char_id, eve_key, eve_vcode)
+        keyInfo = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get,
+                                                                                         'https://api.eveonline.com/account/APIKeyInfo.xml.aspx?characterID=%s&keyID=%s&vCode=%s' % auth,
+                                                                                         timeout=5))
+
+        try:
+            tree = ET.fromstring(keyInfo.text)
+
+            if tree.find('error') is not None:
+                raise Exception()
+
+            key = tree.find('result').find('key')
+
+            if key is None:
+                raise Exception()
+
+            # verify access mask
+            if _type == 0:
+
+                if key.attrib['accessMask'] != "23072779":
+                    message = "The access mask for this API key is not set to 23072779"
+                    raise Exception()
+
+                if key.attrib['type'] == "Corporation":
+                    message = "This API key is not a valid account or character key"
+                    raise Exception()
+
+            else:
+                if key.attrib['accessMask'] != "3149835":
+                    message = "The access mask for this API key is not set to 3149835"
+                    raise Exception()
+
+                if key.attrib['type'] != "Corporation":
+                    message = "This API key is not a valid corporation key"
+                    raise Exception()
+
+            # verify expiry
+            if key.attrib['expires'] != "":
+                expiry = datetime.strptime(key.attrib['expires'], "%Y-%m-%d %H:%M:%S")
+                if settings.utcnow > expiry:
+                    message = "This API key is expired. Please remove the expiry or replace this key"
+                    raise Exception()
+
+            # Verify entity exists
+            found = False
+            rows = [row for row in key.find('rowset')]
+
+            for row in rows:
+                if int(row.attrib['characterID']) == char_id:
+                    found = True
+                    entity = row
+
+            if found == False:
+                message = "There was a problem verifying the character attached to this key. If it has been changed, this key will need to be replaced"
+                raise Exception()
+
+            # verify entity info
+            else:
+
+                if int(entity.attrib['corporationID']) != corp_id:
+                    print("Updating corporation for user %s (key: %s, vcode: %s, corp: %s) to: %s " % (char_id, eve_key, eve_vcode, corp_id, entity.attrib['corporationName']))
+
+                    await db.settings.find_and_modify(
+                    {
+                        'user_id': user_id,
+                        'profiles': {
+                            '$elemMatch': {
+                                'key_id': eve_key,
+                                'vcode': eve_vcode
+                            }
+                        }
+                    },
+                    {
+                        '$set': {
+                            'profiles.$.corporation_id': int(entity.attrib['corporationID']),
+                            'profiles.$.corporation_name': entity.attrib['corporationName']
+                        }
+                    })
+
+        except:
+            verified = False
+
+        if verified == False:
+
+            await db.settings.find_and_modify(
+                {
+                    'user_id': user_id,
+                    'profiles': {
+                        '$elemMatch': {
+                            'key_id': eve_key,
+                            'vcode': eve_vcode
+                        }
+                    }
+                },
+                {
+                    '$set': {
+                        'profiles.$.error': message
+                    }
+                })
+
+        elif error is not None:
+            await db.settings.find_and_modify(
+            {
+                'user_id': user_id,
+                'profiles': {
+                    '$elemMatch': {
+                        'key_id': eve_key,
+                        'vcode': eve_vcode
+                    }
+                }
+            },
+            {
+                '$set': {
+                    'profiles.$.error': None
+                }
+            })
+
+        return verified
+
     async def aggregateProfit(self):
 
         if not settings.is_hourly:
