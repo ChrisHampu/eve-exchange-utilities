@@ -1914,7 +1914,13 @@ class ProfitAggregator:
                 eve_key = profile['key_id']
                 vcode = profile['vcode']
                 wallet_key = profile['wallet_key']
+                error = profile.get('error', None)
                 profiles_calculated += 1
+
+                verified = await self.verifyKey(user_id, char_id, corp_id, _type, eve_key, vcode, error)
+
+                if verified == False:
+                    continue
 
                 if _type == 0:
                     await self.gatherCharacterProfitData(user_id, char_id, entity_name, eve_key, vcode)
@@ -1999,7 +2005,6 @@ class SubscriptionUpdater:
                     print("Renewing subscription for user %s " % sub['user_name'])
                     sub_notification['message'] = 'Your premium subscription has been automatically renewed'
 
-
                     await db.subscription.find_and_modify({'user_id': sub['user_id']}, {
                         '$set': {
                             'subscription_date': settings.utcnow
@@ -2023,9 +2028,75 @@ class SubscriptionUpdater:
                         'target': 0,
                         'balance': 0,
                         'action': 4,
-                        'time': datetime.now()
+                        'time': settings.utcnow
                     })
 
+                    if sub['api_access'] == True:
+
+                        new_balance = sub['balance'] - api_access_cost
+
+                        if api_access_cost > new_balance:
+
+                            await db.subscription.find_and_modify({'user_id': sub['user_id']}, {
+                                '$set': {
+                                    'api_access': False
+                                }
+                            })
+
+                            await db.settings.find_and_modify({'user_id': sub['user_id']}, {
+                                '$set': {
+                                    'api_access': False
+                                },
+                            })
+
+                            await db.audit.insert({
+                                'user_id': sub['user_id'],
+                                'target': 0,
+                                'balance': 0,
+                                'action': 14,
+                                'time': settings.utcnow
+                            })
+
+                            await db.notifications.insert({
+                                "user_id": sub['user_id'],
+                                "time": settings.utcnow,
+                                "read": False,
+                                "message": "You did not have enough remaining balance to cover the cost of API access, and it has been disabled"
+                            })
+
+                        else:
+                            await db.subscription.find_and_modify({'user_id': sub['user_id']}, {
+                                '$set': {
+                                    'subscription_date': settings.utcnow
+                                },
+                                '$inc': {
+                                    'balance': -api_access_cost
+                                },
+                                '$push': {
+                                    'history': {
+                                        'time': settings.utcnow,
+                                        'type': 1,
+                                        'amount': api_access_cost,
+                                        'description': 'API access renewal',
+                                        'processed': True
+                                    }
+                                }
+                            })
+
+                            await db.audit.insert({
+                                'user_id': sub['user_id'],
+                                'target': 0,
+                                'balance': 0,
+                                'action': 15,
+                                'time': settings.utcnow
+                            })
+
+                            await db.notifications.insert({
+                                "user_id": sub['user_id'],
+                                "time": settings.utcnow,
+                                "read": False,
+                                "message": "Your api access has been automatically renewed"
+                            })
                 else:
 
                     print("Ending subscription for user %s " % sub['user_name'])
@@ -2034,6 +2105,7 @@ class SubscriptionUpdater:
                     await db.subscription.find_and_modify({'user_id': sub['user_id']}, {
                         '$set': {
                             'premium': False,
+                            'api_access': False,
                             'subscription_date': None
                         }
                     })
@@ -2041,6 +2113,7 @@ class SubscriptionUpdater:
                     await db.settings.find_and_modify({'user_id': sub['user_id']}, {
                         '$set': {
                             'premium': False,
+                            'api_access': False
                         },
                     })
 
@@ -2049,7 +2122,15 @@ class SubscriptionUpdater:
                         'target': 0,
                         'balance': 0,
                         'action': 9,
-                        'time': datetime.now()
+                        'time': settings.utcnow
+                    })
+
+                    await db.audit.insert({
+                        'user_id': sub['user_id'],
+                        'target': 0,
+                        'balance': 0,
+                        'action': 14,
+                        'time': settings.utcnow
                     })
 
                     await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
