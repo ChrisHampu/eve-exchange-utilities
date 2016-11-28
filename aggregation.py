@@ -21,6 +21,7 @@ except ImportError:
 development_mode = False
 publish_url = 'localhost:4501'
 premiumCost = 150000000
+api_access_cost = 150000000
 
 override_basePrice = {
     11567: 85000000000,
