@@ -1000,6 +1000,7 @@ class MarketAggregator:
 class PortfolioAggregator:
     def __init__(self):
         self.adjusted_prices = None
+        self.system_indexes = {}
         self.simulation_cache = {}
         pass
 
@@ -1018,6 +1019,20 @@ class PortfolioAggregator:
                 print("Failed to load adjusted prices from ESI API")
 
         return self.adjusted_prices
+
+    def buildSystemIndexes(self):
+        try:
+            res = requests.get('https://crest-tq.eveonline.com/industry/systems/', timeout=10)
+
+            doc = json.loads(res.text)
+
+            for item in doc['items']:
+                for activity in item['systemCostIndices']:
+                    if activity['activityID'] == 3:
+                        self.system_indexes[item['solarSystem']['id']] = activity['costIndex']
+
+        except:
+            print("Failed to load system indexes")
 
     def _getMaterialsFromComponent(self, component):
         _materials = []
@@ -1115,10 +1130,13 @@ class PortfolioAggregator:
 
     async def aggregatePortfolios(self):
         start = time.perf_counter()
-        systemIndex = 0.01
+
         taxRate = 0.10
         user_settings = await db.GetAllUserSettings()
         adjustedPrices = self.getAdjustedPrices()
+
+        # Load up system cost indices
+        self.buildSystemIndexes()
 
         if not cache.RedisAvailable():
             print("Skipping portfolio aggregation since redis is unavailable")
@@ -1127,6 +1145,7 @@ class PortfolioAggregator:
         async for doc in db.portfolios.find():
 
             try:
+                systemIndex = self.system_indexes.get(doc.get('buildSystem', 0), 0.0001)
                 components = []
                 materials = {}
                 totalSpread = 0
@@ -1161,13 +1180,13 @@ class PortfolioAggregator:
                     dailyData = cache.redis.hgetall('dly:' + typeIDStr + '-' + str(region))
 
                     # Sell value for trading and buy value for industry (buying an item)
-                    unitPrice = float(minuteData[b'sellPercentile']) if doc['type'] == 0 else float(minuteData[b'buyPercentile'])
-                    portfolioBuyValue += float(minuteData[b'buyPercentile']) * component['quantity']
+                    unitPrice = float(minuteData.get(b'sellPercentile', 0)) if doc['type'] == 0 else float(minuteData.get(b'buyPercentile', 0))
+                    portfolioBuyValue += float(minuteData.get(b'buyPercentile', 0)) * component['quantity']
                     adjustedPrice = adjustedPrices[typeID] if typeID in adjustedPrices else unitPrice
                     totalPrice = unitPrice * component['quantity']
                     totalAdjustedPrice = adjustedPrice * component['quantity']
-                    spread = float(minuteData[b'spread'])
-                    volume = float(dailyData[b'tradeVolume'])
+                    spread = float(minuteData.get(b'spread', 0))
+                    volume = float(dailyData.get(b'tradeVolume', 0))
                     matCost = 0
                     buildSpread = 0
                     simulation = None
@@ -1195,7 +1214,7 @@ class PortfolioAggregator:
                                 matQuantity = math.ceil(mat['quantity'] * _quantity * ((100 - efficiency) / 100))
 
                                 matCost += float(
-                                    cache.redis.hgetall('cur:' + str(mat['typeID']) + '-' + str(region))[b'buyPercentile']) * matQuantity
+                                    cache.redis.hgetall('cur:' + str(mat['typeID']) + '-' + str(region)).get(b'buyPercentile', 0)) * matQuantity
                                 matCost = matCost + (matCost * systemIndex) + (matCost * systemIndex * taxRate)
 
                                 if mat['typeID'] in materials:
@@ -1244,7 +1263,7 @@ class PortfolioAggregator:
                             if 'simulation_wanted_profit' in market_settings:
                                 simulation_settings['wanted_margin'] = market_settings['simulation_wanted_profit']
 
-                        simulation = self.doSimulateTrade(typeID, component['quantity'], float(minuteData[b'buyPercentile']), float(minuteData[b'sellPercentile']), simulation_settings, region)
+                        simulation = self.doSimulateTrade(typeID, component['quantity'], float(minuteData.get(b'buyPercentile', 0)), float(minuteData.get(b'sellPercentile', 0)), simulation_settings, region)
 
                     totalSpread += spread
                     totalVolume += volume
@@ -1279,13 +1298,16 @@ class PortfolioAggregator:
                 if doc['type'] == 1:
                     baseMinuteData = cache.redis.hgetall('cur:' + str(doc['industryTypeID']) + '-' + str(region))
 
-                    if float(baseMinuteData[b'sellPercentile']) != 0:
-                        industrySpread = 100 - (portfolioValue / (
-                        float(baseMinuteData[b'sellPercentile']) * doc['industryQuantity'])) * 100
+                    # Apply the overriding sell price for this portfolio if applicable
+                    if doc.get('overrideSellPrice', None) is not None:
+                        industryValue = doc.get('overrideSellPrice', 0) * doc['industryQuantity']
+                    else:
+                        industryValue = float(baseMinuteData.get(b'sellPercentile', 0)) * doc['industryQuantity']
+
+                    if industryValue != 0:
+                        industrySpread = 100 - (portfolioValue / industryValue) * 100
                     else:
                         industrySpread = 0
-
-                    industryValue = float(baseMinuteData[b'sellPercentile']) * doc['industryQuantity']
 
                     totalInstallCost = (totalInstallCost * systemIndex) + (totalInstallCost * systemIndex * taxRate)
 
