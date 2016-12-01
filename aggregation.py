@@ -2313,10 +2313,13 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
 
     print("Running at %s" % settings.utcnow)
+    script_start = time.perf_counter()
 
     loop.run_until_complete(MarketAggregator().StartAggregation())
     loop.run_until_complete(PortfolioAggregator().aggregatePortfolios())
     loop.run_until_complete(ProfitAggregator().aggregateProfit())
     loop.run_until_complete(SubscriptionUpdater().checkExpired())
+
+    print("Finished in %s seconds" % (time.perf_counter() - script_start))
 
     loop.close()
