@@ -1636,9 +1636,7 @@ class ProfitAggregator:
 
         sales = self._sales[user_id] if user_id in self._sales else None
 
-        # TODO: Update or omit message
         if sales is None:
-            print("Failed to match sales results for user %s" % user_id)
             return []
 
         data = [{key: row[key] for key in ('totalProfit', 'quantity', 'avgPerUnit', 'type', 'name', 'who', 'whoID')} for row in
@@ -1708,9 +1706,7 @@ class ProfitAggregator:
 
         profit = self._profits[user_id] if user_id in self._profits else None
 
-        # TODO: Update or omit message
         if profit is None:
-            print("Failed to match profit results for user %s" % user_id)
             return []
 
         # Insert the hourly chart result for this run to be consumed right after
