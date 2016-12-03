@@ -209,9 +209,13 @@ class CacheInterface:
             else:
                 dailyDocs[doc['type']] = doc
 
+        pip = self._redis.pipeline()
+
         for k in dailyDocs:
             for reg in dailyDocs[k]['regions']:
-                self._redis.hmset('dly:' + str(k) + '-' + str(reg['region']), {**reg, **{'type': k}})
+                pip.hmset('dly:' + str(k) + '-' + str(reg['region']), {**reg, **{'type': k}})
+
+        pip.execute()
 
         print("Loaded %s daily documents into cache in %s seconds" % (len(dailyDocs), time.perf_counter() - loadTimer))
 
@@ -219,18 +223,67 @@ class CacheInterface:
         if not self.RedisAvailable():
             print("Skipping current redis cache load since redis is unavailable")
 
+        await asyncio.gather(*[
+            self._loadAggregates(aggregates),
+            self._loadOrders()
+        ])
+
+    async def _loadAggregates(self, aggregates):
         loadTimer = time.perf_counter()
 
         try:
             # Keys use both the type ID and region for efficiency in retrieval, and to avoid nesting
+
+            pip = self._redis.pipeline()
+
             for v in aggregates:
                 for reg in v['regions']:
-                    self._redis.hmset('cur:' + str(v['type']) + '-' + str(reg['region']), {**reg, **{'type': v['type']}})
+                    pip.hmset('cur:' + str(v['type']) + '-' + str(reg['region']),
+                                      {**reg, **{'type': v['type']}})
+
+            pip.execute()
+
         except:
             traceback.print_exc()
             print("Failed to update current redis cache")
 
         print("Loaded current aggregates into cache in %s seconds" % (time.perf_counter() - loadTimer))
+
+    async def _loadOrders(self):
+        print("Loading market orders into redis")
+        loadTimer = time.perf_counter()
+
+        try:
+            order_map = {}
+
+            pip = self._redis.pipeline()
+
+            for order in orderInterface._persisted_orders:
+                pip.hmset('ord:' + str(order['id']), order)
+
+                if order['type'] in order_map:
+                    if order['region'] in order_map[order['type']]:
+                        order_map[order['type']][order['region']].append(order['id'])
+                    else:
+                        order_map[order['type']][order['region']] = [order['id']]
+                else:
+                    order_map[order['type']] = {}
+
+            pip.execute()
+
+            pip = self._redis.pipeline()
+
+            for type in order_map:
+                for region in order_map[type]:
+                    pip.lpush('ord_cnt:%s-%s' % (type, region), *order_map[type][region])
+
+            pip.execute()
+
+        except:
+            traceback.print_exc()
+            print("Failed to update market order redis cache")
+
+        print("Loaded current orders into cache in %s seconds" % (time.perf_counter() - loadTimer))
 
 cache = CacheInterface()
 
