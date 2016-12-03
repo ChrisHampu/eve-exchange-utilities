@@ -2105,6 +2105,103 @@ class SubscriptionUpdater:
     def __init__(self):
         pass
 
+    async def updateSubscriptions(self):
+
+        await asyncio.gather(*[
+            self.checkExpired(),
+            self.checkDeposits()
+        ])
+
+    async def checkDeposits(self):
+
+        if not settings.is_hourly:
+            return
+
+        auth = (1000, 5682889, '***REMOVED***')
+        url = "https://api.eveonline.com/corp/WalletJournal.xml.aspx?accountKey=%s&keyID=%s&vCode=%s&rowCount=1000" % auth
+        req = requests.get(url)
+        rows = []
+
+        try:
+            tree = ET.fromstring(req.text)
+
+            if tree.find('error') is not None:
+                print("Error while pulling corporation journal for checking deposits (%s, %s, %s): %s" % (auth[0], auth[1], auth[2], tree.find('error').text))
+                return
+
+            rows = list(tree.find('result').find('rowset'))
+        except:
+            pass
+
+        data = [{key:row.attrib[key] for key in ('amount', 'refTypeID', 'date', 'ownerID1', 'ownerName1')} for row in rows if time.strptime(row.attrib['date'], '%Y-%m-%d %H:%M:%S') > settings.hour_offset_utc.utctimetuple()]
+
+        deposits = [x for x in data if x['refTypeID'] == '10']
+
+        user_settings = await db.GetAllUserSettings()
+
+        for deposit in deposits:
+            user_id = int(deposit['ownerID1'])
+            amount = float(deposit['amount'])
+
+            if user_id not in user_settings:
+                print("Unknown user %s:%s has made a deposit of %s ISK" % (user_id, deposit['ownerName1'], amount))
+
+                await db.audit.insert({
+                    'user_id': 0,
+                    'target': user_id,
+                    'balance': amount,
+                    'action': 0,
+                    'time': settings.utcnow
+                })
+
+                continue
+
+            await db.notifications.insert({
+                "user_id": user_id,
+                "time": settings.utcnow,
+                "read": False,
+                "message": "A deposit has been made into your account for the amount of %s ISK" % amount
+            })
+
+            await db.subscription.find_and_modify({'user_id': user_id}, {
+                '$inc': {
+                    'balance': amount
+                },
+                '$push': {
+                    'history': {
+                        'time': settings.utcnow,
+                        'type': 0,
+                        'amount': amount,
+                        'description': 'Automated deposit',
+                        'processed': True
+                    }
+                }
+            })
+
+            await db.audit.insert({
+                'user_id': 0,
+                'target': user_id,
+                'balance': amount,
+                'action': 0,
+                'time': settings.utcnow
+            })
+
+            await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
+                                                                                   'http://' + publish_url + '/publish/notifications/%s' %
+                                                                                   user_id,
+                                                                                   timeout=5))
+
+            await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
+                                                                                   'http://' + publish_url + '/publish/subscription/%s' %
+                                                                                   user_id,
+                                                                                   timeout=5))
+
+        await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
+                                                                               'http://' + publish_url + '/publish/audit',
+                                                                               timeout=5))
+
+        return data
+
     async def checkExpired(self):
 
         user_settings = await db.GetAllUserSettings()
@@ -2313,7 +2410,7 @@ if __name__ == "__main__":
     loop.run_until_complete(MarketAggregator().StartAggregation())
     loop.run_until_complete(PortfolioAggregator().aggregatePortfolios())
     loop.run_until_complete(ProfitAggregator().aggregateProfit())
-    loop.run_until_complete(SubscriptionUpdater().checkExpired())
+    loop.run_until_complete(SubscriptionUpdater().updateSubscriptions())
 
     print("Finished in %s seconds" % (time.perf_counter() - script_start))
 
