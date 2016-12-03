@@ -1503,7 +1503,7 @@ class ProfitAggregator:
             tree = ET.fromstring(req.text)
 
             if tree.find('error') is not None:
-                print("Error while pulling character journal: %s" % tree.find('error').text)
+                print("Error while pulling character journal (%s, %s, %s): %s" % (char_id, eve_key, eve_vcode, tree.find('error').text))
                 return []
 
             rows = list(tree.find('result').find('rowset'))
@@ -1525,7 +1525,7 @@ class ProfitAggregator:
             tree = ET.fromstring(req.text)
 
             if tree.find('error') is not None:
-                print("Error while pulling corporation journal: %s" % tree.find('error').text)
+                print("Error while pulling corporation journal (%s, %s, %s): %s" % (wallet_key, eve_key, eve_vcode, tree.find('error').text))
                 return []
 
             rows = list(tree.find('result').find('rowset'))
