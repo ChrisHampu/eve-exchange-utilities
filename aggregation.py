@@ -265,7 +265,13 @@ class CacheInterface:
             pip = self._redis.pipeline()
 
             for order in orderInterface._persisted_orders:
-                pip.hmset('ord:' + str(order['id']), order)
+                pip.hmset('ord:' + str(order['id']), {
+                    'volume': order['volume'],
+                    'type': order['type'],
+                    'price': order['price'],
+                    'buy': order['buy'],
+                    'stationID': order['stationID']
+                })
 
                 if order['type'] in order_map:
                     if order['region'] in order_map[order['type']]:
