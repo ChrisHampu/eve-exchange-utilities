@@ -622,7 +622,6 @@ class OrderInterface:
             print("%s volume changes for region %s" % (len(self._volume_changes[region]), region))
 
         # Clean up orders that were pulled from DB for this task
-        self._deleted_orders = []
         self._existing_orders = []
 
         # Persisted orders will be used in portfolio aggregation to get top order prices
