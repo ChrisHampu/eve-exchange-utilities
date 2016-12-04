@@ -183,8 +183,6 @@ class CacheInterface:
 
         for order in orderInterface._deleted_orders:
 
-            print(order)
-
             self._redis.delete('ord:%s' % order)
 
         print("Stale market data purged in %s seconds" % (time.perf_counter() - purgeTimer))
