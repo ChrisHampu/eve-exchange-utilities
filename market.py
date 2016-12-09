@@ -39,6 +39,8 @@ override_basePrice = {
     3514: 100000000000
 }
 
+os.chdir(os.path.dirname(sys.argv[0]))
+
 # Load static data
 with open(os.path.realpath('./sde/blueprints.js'), 'r', encoding='utf-8') as f:
     blueprints = json.loads(f.read())
