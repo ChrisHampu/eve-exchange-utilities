@@ -40,13 +40,13 @@ override_basePrice = {
 }
 
 # Load static data
-with open('sde/blueprints.js', 'r', encoding='utf-8') as f:
+with open(os.path.realpath('./sde/blueprints.js'), 'r', encoding='utf-8') as f:
     blueprints = json.loads(f.read())
 
-with open('sde/market_ids.js', 'r', encoding='utf-8') as f:
+with open(os.path.realpath('./sde/market_ids.js'), 'r', encoding='utf-8') as f:
     market_ids = json.loads(f.read())
 
-with open('sde/blueprint_basePrice.js', 'r', encoding='utf-8') as f:
+with open(os.path.realpath('./sde/blueprint_basePrice.js'), 'r', encoding='utf-8') as f:
     blueprints_basePrice = json.loads(f.read())
 
     for i in blueprints_basePrice:
