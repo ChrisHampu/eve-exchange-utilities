@@ -1483,13 +1483,6 @@ class SubscriptionUpdater:
 
         user_settings = await db.GetAllUserSettings()
 
-        sub_notification = {
-            "user_id": 0,
-            "time": settings.utcnow,
-            "read": False,
-            "message": ""
-        }
-
         all_subs = await db.subscription.find()
 
         for sub in all_subs:
@@ -1514,8 +1507,6 @@ class SubscriptionUpdater:
                 renew = True
                 premium = True
 
-                sub_notification['user_id'] = sub['user_id']
-
                 if 'general' in user:
                     if 'auto_renew' in user['general']:
                         renew = True if user['general']['auto_renew'] == True else False
@@ -1531,7 +1522,6 @@ class SubscriptionUpdater:
                 if premium == True:
 
                     print("Renewing subscription for user %s " % sub['user_name'])
-                    sub_notification['message'] = 'Your premium subscription has been automatically renewed'
 
                     await db.subscription.find_and_modify({'user_id': sub['user_id']}, {
                         '$set': {
@@ -1549,6 +1539,13 @@ class SubscriptionUpdater:
                                 'processed': True
                             }
                         }
+                    })
+
+                    await db.notifications.insert({
+                        "user_id": sub['user_id'],
+                        "time": settings.utcnow,
+                        "read": False,
+                        "message": 'Your premium subscription has been automatically renewed'
                     })
 
                     await db.audit.insert({
@@ -1628,7 +1625,6 @@ class SubscriptionUpdater:
                 else:
 
                     print("Ending subscription for user %s " % sub['user_name'])
-                    sub_notification['message'] = 'Your premium subscription has expired and not automatically renewed'
 
                     await db.subscription.find_and_modify({'user_id': sub['user_id']}, {
                         '$set': {
@@ -1643,6 +1639,13 @@ class SubscriptionUpdater:
                             'premium': False,
                             'api_access': False
                         },
+                    })
+
+                    await db.notifications.insert({
+                        "user_id": sub['user_id'],
+                        "time": settings.utcnow,
+                        "read": False,
+                        "message": 'Your premium subscription has expired and not automatically renewed'
                     })
 
                     await db.audit.insert({
@@ -1666,9 +1669,6 @@ class SubscriptionUpdater:
                     await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
                                                                                          'http://' + publish_url + '/publish/settings/%s' % sub['user_id'],
                                                                                          timeout=5))
-
-                await db.notifications.insert(sub_notification)
-
                 await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
                                                                                        'http://' + publish_url + '/publish/notifications/%s' % sub['user_id'],
                                                                                        timeout=5))
