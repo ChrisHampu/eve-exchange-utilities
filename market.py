@@ -1490,7 +1490,9 @@ class SubscriptionUpdater:
             "message": ""
         }
 
-        async for sub in db.subscription.find():
+        all_subs = await db.subscription.find()
+
+        for sub in all_subs:
 
             user = user_settings.get(sub['user_id'], None)
 
