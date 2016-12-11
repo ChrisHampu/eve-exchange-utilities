@@ -1483,7 +1483,7 @@ class SubscriptionUpdater:
 
         user_settings = await db.GetAllUserSettings()
 
-        all_subs = await db.subscription.find()
+        all_subs = await db.subscription.find().to_list(length=None)
 
         for sub in all_subs:
 
