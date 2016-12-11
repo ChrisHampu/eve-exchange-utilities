@@ -1653,6 +1653,7 @@ class SubscriptionUpdater:
                         'time': settings.utcnow
                     })
 
+                    ''' API Expired is already assumed by subscription ending
                     await db.audit.insert({
                         'user_id': sub['user_id'],
                         'target': 0,
@@ -1660,6 +1661,7 @@ class SubscriptionUpdater:
                         'action': 14,
                         'time': settings.utcnow
                     })
+                    '''
 
                     await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
                                                                                          'http://' + publish_url + '/publish/settings/%s' % sub['user_id'],
