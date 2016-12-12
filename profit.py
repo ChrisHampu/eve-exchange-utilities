@@ -681,16 +681,12 @@ class ProfitAggregator:
 
         for user in user_settings.values():
 
-            # Check if user has been set up yet and has any API keys
-            if 'profiles' not in user:
-                continue
-
             user_id = user['user_id']
             profiles_calculated = 0
 
             await self.clearUserOrders(user_id)
 
-            for profile in user['profiles']:
+            for profile in user.get('profiles', []):
 
                 _type = profile['type']
 
