@@ -25,23 +25,24 @@ db = database.DatabaseConnector()
 # TODO: add error checking to every single request
 class ProfitAggregator:
     def __init__(self):
-        self._rowCount = 1000 # Number of rows to pull from api
+        self._rowCount = 2000 # Number of rows to pull from api
         self._hour_offset = settings.hour_offset_utc.utctimetuple()
         self._sales = {} # char id -> [transactions]
         self._profits = {} # char id -> profit results
 
     def getCharacterTransactions(self, char_id, eve_key, eve_vcode, fromID=None) -> List:
 
-        auth = (char_id, eve_key, eve_vcode, self._rowCount, "" if fromID is None else "&fromID="+str(fromID))
-        url = "https://api.eveonline.com/char/WalletTransactions.xml.aspx?characterID=%s&keyID=%s&vCode=%s&rowCount=%s%s" % auth
-        req = requests.get(url)
         rows = []
 
         try:
+            auth = (char_id, eve_key, eve_vcode, self._rowCount, "" if fromID is None else "&fromID=" + str(fromID))
+            url = "https://api.eveonline.com/char/WalletTransactions.xml.aspx?characterID=%s&keyID=%s&vCode=%s&rowCount=%s%s" % auth
+            req = requests.get(url)
+
             tree = ET.fromstring(req.text)
 
             if tree.find('error') is not None:
-                print("Error while pulling character transactions")
+                print("Error while pulling character transactions (%s, %s, %s): %s" % (char_id, eve_key, eve_vcode, tree.find('error').text))
                 return []
 
             rows = [i for i in list(tree.find('result').find('rowset')) if i.attrib['transactionFor'] == 'personal']
@@ -53,16 +54,17 @@ class ProfitAggregator:
 
     def getCorporationTransactions(self, wallet_key, eve_key, eve_vcode, fromID=None) -> List:
 
-        auth = (wallet_key, eve_key, eve_vcode, self._rowCount, "" if fromID is None else "&fromID="+str(fromID))
-        url = "https://api.eveonline.com/corp/WalletTransactions.xml.aspx?accountKey=%s&keyID=%s&vCode=%s&rowCount=%s%s" % auth
-        req = requests.get(url)
         rows = []
 
         try:
+            auth = (wallet_key, eve_key, eve_vcode, self._rowCount, "" if fromID is None else "&fromID=" + str(fromID))
+            url = "https://api.eveonline.com/corp/WalletTransactions.xml.aspx?accountKey=%s&keyID=%s&vCode=%s&rowCount=%s%s" % auth
+            req = requests.get(url)
+
             tree = ET.fromstring(req.text)
 
             if tree.find('error') is not None:
-                print("Error while pulling corporation transactions: %s" % tree.find('error').text)
+                print("Error while pulling corporation transactions (%s, %s, %s): %s" % (wallet_key, eve_key, eve_vcode, tree.find('error').text))
                 return []
 
             rows = [i for i in list(tree.find('result').find('rowset')) if i.attrib['transactionFor'] == 'corporation']
@@ -80,6 +82,7 @@ class ProfitAggregator:
         if len(journal) == 0:
             return []
 
+        '''
         fromID = journal[-1].attrib['transactionID']
         lastPull = len(journal)
 
@@ -95,6 +98,7 @@ class ProfitAggregator:
         if lastPull > 0:
             newJournal = self.getCharacterTransactions(char_id, eve_key, eve_vcode, fromID)
             journal.extend(newJournal)
+        '''
 
         return journal
 
@@ -106,6 +110,7 @@ class ProfitAggregator:
         if len(journal) == 0:
             return []
 
+        '''
         fromID = journal[-1].attrib['transactionID']
         lastPull = len(journal)
 
@@ -121,17 +126,19 @@ class ProfitAggregator:
         if lastPull > 0:
             newJournal = self.getCorporationTransactions(wallet_key, eve_key, eve_vcode, fromID)
             journal.extend(newJournal)
+        '''
 
         return journal
 
     def getCharacterJournalEntries(self, char_id, eve_key, eve_vcode) -> List:
 
-        auth = (char_id, eve_key, eve_vcode)
-        url = "https://api.eveonline.com/char/WalletJournal.xml.aspx?characterID=%s&keyID=%s&vCode=%s&rowCount=1000" % auth
-        req = requests.get(url)
         rows = []
 
         try:
+            auth = (char_id, eve_key, eve_vcode)
+            url = "https://api.eveonline.com/char/WalletJournal.xml.aspx?characterID=%s&keyID=%s&vCode=%s&rowCount=2000" % auth
+            req = requests.get(url)
+
             tree = ET.fromstring(req.text)
 
             if tree.find('error') is not None:
@@ -148,12 +155,13 @@ class ProfitAggregator:
 
     def getCorporationJournalEntries(self, wallet_key, eve_key, eve_vcode) -> List:
 
-        auth = (wallet_key, eve_key, eve_vcode)
-        url = "https://api.eveonline.com/corp/WalletJournal.xml.aspx?accountKey=%s&keyID=%s&vCode=%s&rowCount=1000" % auth
-        req = requests.get(url)
         rows = []
 
         try:
+            auth = (wallet_key, eve_key, eve_vcode)
+            url = "https://api.eveonline.com/corp/WalletJournal.xml.aspx?accountKey=%s&keyID=%s&vCode=%s&rowCount=2000" % auth
+            req = requests.get(url)
+
             tree = ET.fromstring(req.text)
 
             if tree.find('error') is not None:
@@ -212,7 +220,7 @@ class ProfitAggregator:
             buy = next((x for x in data if x['typeID'] == typeID and x['transactionType'] == 'buy'), None)
 
             if buy is None:
-                print("No buy data for type ID %s" % typeID)
+                #print("No buy data for type ID %s" % typeID)
                 continue
 
             salesCount = len(groupedSells[typeID])
