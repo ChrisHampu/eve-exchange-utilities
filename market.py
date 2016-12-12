@@ -1343,7 +1343,10 @@ class PortfolioAggregator:
                             oldest = newestHourly[0:1][0]
                             newest = newestHourly[-1:][0]
 
-                            dailyGrowth = 100 - (oldest['portfolioValue'] / newest['portfolioValue']) * 100
+                            if newest['portfolioValue'] == 0:
+                                dailyGrowth = 0
+                            else:
+                                dailyGrowth = 100 - (oldest['portfolioValue'] / newest['portfolioValue']) * 100
 
                             newDaily = hourlyResult
                             newDaily['growth'] = dailyGrowth
