@@ -346,17 +346,14 @@ class ProfitAggregator:
 
         profit = self._profits[user_id] if user_id in self._profits else None
 
-        if profit is None:
-            return []
-
-        # Insert the hourly chart result for this run to be consumed right after
+        # If no profit data, just insert 0's for this hour
         this_hourly_result = {
             'user_id': user_id,
             'time': settings.utcnow,
             'frequency': 'hourly',
-            'profit': profit['profit'],
-            'taxes': profit['taxes'],
-            'broker': profit['broker']
+            'profit': profit['profit'] if profit is not None else 0,
+            'taxes': profit['taxes'] if profit is not None else 0,
+            'broker': profit['broker'] if profit is not None else 0
         }
 
         # First load all hourly results
@@ -370,6 +367,7 @@ class ProfitAggregator:
         # Insert new result
         await db.profit_chart.insert(this_hourly_result)
 
+        # Find alltime record for this user
         alltime = await db.profit_all_time.find_one({'user_id': user_id})
 
         if alltime is None:
@@ -385,17 +383,19 @@ class ProfitAggregator:
 
             pastDay = sumDocs(hourly_chart)
 
+            # Update alltime statistics
             await db.profit_all_time.find_and_modify({'_id': ObjectId(oid=alltime['_id'])}, {
                 '$set': {
                     'day': pastDay
                 },
                 '$inc': {
-                    'alltime.profit': profit['profit'],
-                    'alltime.broker': profit['broker'],
-                    'alltime.taxes': profit['taxes']
+                    'alltime.profit': profit['profit'] if profit is not None else 0,
+                    'alltime.broker': profit['broker'] if profit is not None else 0,
+                    'alltime.taxes': profit['taxes'] if profit is not None else 0
                 }
             })
 
+            # Daily: Aggregate hourly docs into a single daily doc
             if settings.is_daily:
 
                 await db.profit_chart.insert({
