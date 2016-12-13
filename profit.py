@@ -550,11 +550,12 @@ class ProfitAggregator:
         entity = None
         message = "There was a problem with looking up your API key. Please verify that this key still exists"
         auth = (char_id, eve_key, eve_vcode)
-        keyInfo = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get,
-                                                                                         'https://api.eveonline.com/account/APIKeyInfo.xml.aspx?characterID=%s&keyID=%s&vCode=%s' % auth,
-                                                                                         timeout=5))
 
         try:
+            keyInfo = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get,
+                                                                                             'https://api.eveonline.com/account/APIKeyInfo.xml.aspx?characterID=%s&keyID=%s&vCode=%s' % auth,
+                                                                                             timeout=5))
+
             tree = ET.fromstring(keyInfo.text)
 
             if tree.find('error') is not None:

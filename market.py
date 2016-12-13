@@ -841,19 +841,25 @@ class OrderAggregator:
             {
                 '$project': {
                     'type': 1,
+                    'time': 1,
                     'regions.region': 1,
                     'regions.spread': 1,
-                    'regions.tradeVolume': 1
+                    'regions.tradeVolume': 1,
+                    'regions.buyPercentile': 1
                 },
             },
             {
                 '$unwind': "$regions"
             },
             {
+                '$sort': { 'time': 1 } # Sort them so that we can pull the first document in the 7 day time series
+            },
+            {
                 '$group': {
                     '_id': {"region": "$regions.region", "type": "$type"},
                     'spread': {'$avg': '$regions.spread'},
-                    'tradeVolume': {'$avg': '$regions.tradeVolume'}
+                    'tradeVolume': {'$avg': '$regions.tradeVolume'},
+                    'velocity': {'$first': '$regions.buyPercentile'}
                 }
             }
         ]
@@ -906,11 +912,13 @@ class OrderAggregator:
             region = i['_id']['region']
             spread_sma = 0
             volume_sma = 0
+            velocity = 0
 
             if _type in self._aggregates_daily_sma:
                 if region in self._aggregates_daily_sma[_type]:
                     spread_sma = self._aggregates_daily_sma[_type][region]['spread']
                     volume_sma = self._aggregates_daily_sma[_type][region]['tradeVolume']
+                    velocity = self._aggregates_daily_sma[_type][region]['velocity']
 
             if _type not in accumulator:
                 accumulator[_type] = {
@@ -921,6 +929,7 @@ class OrderAggregator:
                             'region': region,
                             'spread_sma': spread_sma,
                             'volume_sma': volume_sma,
+                            'velocity': (i['buyPercentile'] - velocity) if velocity is not 0 else 0,
                             **{key: value for key, value in i.items() if key not in {'_id'}}
 
                         }
@@ -932,6 +941,7 @@ class OrderAggregator:
                         'region': i['_id']['region'],
                         'spread_sma': spread_sma,
                         'volume_sma': volume_sma,
+                        'velocity': (i['buyPercentile'] - velocity) if velocity is not 0 else 0,
                         **{key: value for key, value in i.items() if key not in {'_id'}}
                     }
                 )
