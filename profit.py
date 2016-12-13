@@ -650,7 +650,7 @@ class ProfitAggregator:
                     }
                 })
 
-        elif error is not None:
+        else:
             await db.settings.find_and_modify(
             {
                 'user_id': user_id,
