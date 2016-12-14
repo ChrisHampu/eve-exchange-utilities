@@ -106,28 +106,18 @@ class CacheInterface:
 
         print("Stale market data purged in %s seconds" % (time.perf_counter() - purgeTimer))
 
-    async def LoadDailyRedisCache(self):
+    def LoadDailyRedisCache(self, aggregates):
         if not self.RedisAvailable():
             print("Skipping daily redis cache load since redis is unavailable")
-
-        '''
-        try:
-            if self._redis.exists("dly:28668") == True:
-                return
-        except:
-            print("Failed to load daily cache as Redis is unavailable")
-            return
-        '''
 
         print("Loading daily documents into redis cache")
 
         loadTimer = time.perf_counter()
         dailyDocs = {}
 
-        async for doc in db.aggregates_daily.find():
+        for doc in aggregates:
             if doc['type'] in dailyDocs:
-                if doc['time'] > dailyDocs[doc['type']]['time']:
-                    dailyDocs[doc['type']] = doc
+                dailyDocs[doc['type']] = doc
 
             else:
                 dailyDocs[doc['type']] = doc
@@ -610,7 +600,7 @@ class OrderAggregator:
         if settings.is_daily:
             await self.AggregateDaily()
             await self._deepstream.PublishDailyAggregates()
-            await cache.LoadDailyRedisCache()
+            cache.LoadDailyRedisCache(self._aggregates_daily)
 
 
         await asyncio.gather(*[
@@ -953,6 +943,8 @@ class OrderAggregator:
         await self.DoThreadedInsert(db.aggregates_daily, self._aggregates_daily)
 
         print("Daily data finished in %s seconds" % (time.perf_counter() - agg_timer))
+
+        return self._aggregates_daily
 
     @property
     def aggregates_minutes(self) -> List[Dict]:
