@@ -7,7 +7,7 @@ from motor import motor_asyncio
 
 client = motor_asyncio.AsyncIOMotorClient()
 
-database = client.evetradeforecaster
+database = client.eveexchange
 aggregates_daily = database.aggregates_daily
 
 try:
