@@ -463,6 +463,7 @@ class OrderInterface:
                 self._volume_changes[region][i['type']] = diff
 
             # Consider volume from deleted orders
+            '''
             if len(self._deleted_orders) > 0:
 
                 type_to_avg_volume = {}
@@ -549,6 +550,7 @@ class OrderInterface:
                         self._volume_changes[region][_type] = exist_orders_volume[i]
                     else:
                         self._volume_changes[region][_type] += exist_orders_volume[i]
+            '''
 
             print("%s volume changes for region %s" % (len(self._volume_changes[region]), region))
 
