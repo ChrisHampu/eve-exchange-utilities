@@ -445,12 +445,15 @@ class OrderInterface:
                     continue
 
                 # Compare new data volume to previous dataset
-                diff = i['volume'] - exist_orders_volume[i['id']]
+                diff = exist_orders_volume[i['id']] - i['volume']
 
                 if diff <= 0:
                     continue
 
-                self._volume_changes[region][i['type']] = diff
+                if i['type'] in self._volume_changes[region]:
+                    self._volume_changes[region][i['type']] += diff
+                else:
+                    self._volume_changes[region][i['type']] = diff
 
             # Consider volume from deleted orders
             '''
