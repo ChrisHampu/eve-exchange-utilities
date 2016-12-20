@@ -1342,26 +1342,7 @@ class PortfolioAggregator:
 
                 if settings.is_daily:
 
-                    if doc['type'] == 0:
-
-                        newestHourly = hourly[:24]
-
-                        if len(newestHourly) > 0:
-                            oldest = newestHourly[0:1][0]
-                            newest = newestHourly[-1:][0]
-
-                            if newest['portfolioValue'] == 0:
-                                dailyGrowth = 0
-                            else:
-                                dailyGrowth = 100 - (oldest['portfolioValue'] / newest['portfolioValue']) * 100
-
-                            newDaily = hourlyResult
-                            newDaily['growth'] = dailyGrowth
-
-                            daily.append(newDaily)
-                    else:
-
-                        daily.append(hourlyResult)
+                    daily.append(hourlyResult)
 
                 await db.portfolios.find_and_modify({'_id': ObjectId(oid=doc['_id'])}, {
                     '$set': {
