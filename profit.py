@@ -10,7 +10,8 @@ import functools
 from bson.objectid import ObjectId
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
-from aggregation import settings as _settings, database
+from aggregation import settings as _settings, database, redis_interface
+from market import OrderInterface
 
 try:
     import xml.etree.cElementTree as ET
@@ -21,6 +22,7 @@ publish_url = 'localhost:4501'
 
 settings = _settings.Settings()
 db = database.DatabaseConnector()
+cache = redis_interface.CacheInterface(OrderInterface())
 
 # TODO: add error checking to every single request
 class ProfitAggregator:
@@ -447,6 +449,62 @@ class ProfitAggregator:
 
         await db.user_orders.insert(orders)
 
+    def findAssetChildren(self, asset, entity_info):
+
+        obj = {
+            **{k: int(asset.attrib[k]) for k in (
+                'typeID', 'quantity', 'flag', 'singleton')},
+            **entity_info,
+            **{
+                'children': [],
+                'locationID': int(asset.attrib['locationID']) if 'locationID' in asset.attrib else 0,
+                'value': cache.GetItemSellPrice(int(asset.attrib['typeID']))
+            },
+        }
+
+        try:
+
+            children = []
+
+            for row in list(asset.find('rowset')):
+                children.append(self.findAssetChildren(row, entity_info))
+
+            obj['children'] = children
+
+        except:
+            pass
+
+        return obj
+
+    async def loadCharacterAssets(self, user_id, char_id, entity_name, eve_key, eve_vcode):
+
+        auth = (char_id, eve_key, eve_vcode)
+        url = "https://api.eveonline.com/char/AssetList.xml.aspx?characterID=%s&keyID=%s&vCode=%s" % auth
+        rows = []
+
+        try:
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
+
+            tree = ET.fromstring(req.text)
+
+            if tree.find('error') is not None:
+                print(tree.find('error').text)
+                print("Error while pulling character assets for user %s" % user_id)
+                return
+
+            rows = [row for row in list(tree.find('result').find('rowset'))]
+
+        except:
+            pass
+
+        assets = []
+        entity_info = {'user_id': user_id, 'who': entity_name, 'whoID': char_id}
+
+        for asset in rows:
+            assets.append(self.findAssetChildren(asset, entity_info))
+
+        return assets
+
     async def loadCorporationOrders(self, user_id, wallet_key, entity_id, entity_name, eve_key, eve_vcode):
 
         auth = (eve_key, eve_vcode)
@@ -684,8 +742,10 @@ class ProfitAggregator:
 
             user_id = user['user_id']
             profiles_calculated = 0
+            assets = []
 
             await self.clearUserOrders(user_id)
+            await db.user_assets.remove({'user_id': user_id})
 
             for profile in user.get('profiles', []):
 
@@ -712,6 +772,9 @@ class ProfitAggregator:
                     continue
 
                 if _type == 0:
+
+                    assets.extend(await self.loadCharacterAssets(user_id, char_id, entity_name, eve_key, vcode))
+
                     await self.gatherCharacterProfitData(user_id, char_id, entity_name, eve_key, vcode)
                     await self.loadCharacterOrders(user_id, char_id, entity_name, eve_key, vcode)
 
@@ -727,6 +790,8 @@ class ProfitAggregator:
             transactions.extend(await self.updateTopItems(user_id))
 
             await self.updateAllTime(user_id)
+            if len(assets) != 0:
+                await db.user_assets.insert(assets)
 
         if len(transactions) > 0:
             await db.profit_transactions.insert(transactions)

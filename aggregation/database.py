@@ -19,6 +19,7 @@ class DatabaseConnector:
         self.subscription = self.database.subscription
         self.notifications = self.database.notifications
         self.audit = self.database.audit_log
+        self.user_assets = self.database.user_assets
 
         self.settings_cache = None
 
