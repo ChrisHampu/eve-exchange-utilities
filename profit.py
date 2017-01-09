@@ -505,6 +505,35 @@ class ProfitAggregator:
 
         return assets
 
+    async def loadCorporationAssets(self, user_id, wallet_key, entity_id, entity_name, eve_key, eve_vcode):
+
+        auth = (eve_key, eve_vcode)
+        url = "https://api.eveonline.com/corp/AssetList.xml.aspx?keyID=%s&vCode=%s" % auth
+        rows = []
+
+        try:
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
+
+            tree = ET.fromstring(req.text)
+
+            if tree.find('error') is not None:
+                print(tree.find('error').text)
+                print("Error while pulling corporation assets for user %s" % user_id)
+                return
+
+            rows = [row for row in list(tree.find('result').find('rowset'))]
+
+        except:
+            pass
+
+        assets = []
+        entity_info = {'user_id': user_id, 'who': entity_name, 'whoID': entity_id}
+
+        for asset in rows:
+            assets.append(self.findAssetChildren(asset, entity_info))
+
+        return assets
+
     async def loadCorporationOrders(self, user_id, wallet_key, entity_id, entity_name, eve_key, eve_vcode):
 
         auth = (eve_key, eve_vcode)
@@ -780,6 +809,8 @@ class ProfitAggregator:
 
                     wallet_balance = await self.getCharacterBalance(user_id, char_id, eve_key, vcode)
                 else:
+                    assets.extend(await self.loadCorporationAssets(user_id, wallet_key, corp_id, entity_name, eve_key, vcode))
+
                     await self.gatherCorporationProfitData(user_id, corp_id, wallet_key, entity_name, eve_key, vcode)
                     await self.loadCorporationOrders(user_id, wallet_key, corp_id, entity_name, eve_key, vcode)
 
@@ -790,6 +821,7 @@ class ProfitAggregator:
             transactions.extend(await self.updateTopItems(user_id))
 
             await self.updateAllTime(user_id)
+
             if len(assets) != 0:
                 await db.user_assets.insert(assets)
 
