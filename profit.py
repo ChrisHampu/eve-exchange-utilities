@@ -7,6 +7,7 @@ import sys
 import os
 import time
 import functools
+import traceback
 from bson.objectid import ObjectId
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
@@ -476,7 +477,7 @@ class ProfitAggregator:
 
         return obj
 
-    async def loadCharacterAssets(self, user_id, char_id, entity_name, eve_key, eve_vcode):
+    async def loadCharacterAssets(self, user_id, char_id, entity_name, eve_key, eve_vcode, assets_data):
 
         auth = (char_id, eve_key, eve_vcode)
         url = "https://api.eveonline.com/char/AssetList.xml.aspx?characterID=%s&keyID=%s&vCode=%s" % auth
@@ -503,9 +504,9 @@ class ProfitAggregator:
         for asset in rows:
             assets.append(self.findAssetChildren(asset, entity_info))
 
-        return assets
+        assets_data['list'].extend(assets)
 
-    async def loadCorporationAssets(self, user_id, wallet_key, entity_id, entity_name, eve_key, eve_vcode):
+    async def loadCorporationAssets(self, user_id, wallet_key, entity_id, entity_name, eve_key, eve_vcode, assets_data):
 
         auth = (eve_key, eve_vcode)
         url = "https://api.eveonline.com/corp/AssetList.xml.aspx?keyID=%s&vCode=%s" % auth
@@ -532,7 +533,7 @@ class ProfitAggregator:
         for asset in rows:
             assets.append(self.findAssetChildren(asset, entity_info))
 
-        return assets
+        assets_data['list'].extend(assets)
 
     async def loadCorporationOrders(self, user_id, wallet_key, entity_id, entity_name, eve_key, eve_vcode):
 
@@ -771,7 +772,11 @@ class ProfitAggregator:
 
             user_id = user['user_id']
             profiles_calculated = 0
-            assets = []
+            assets_data = {
+                'list': [],
+                'total_value': 0,
+                'user_id': user_id
+            }
 
             await self.clearUserOrders(user_id)
             await db.user_assets.remove({'user_id': user_id})
@@ -802,14 +807,14 @@ class ProfitAggregator:
 
                 if _type == 0:
 
-                    assets.extend(await self.loadCharacterAssets(user_id, char_id, entity_name, eve_key, vcode))
+                    await self.loadCharacterAssets(user_id, char_id, entity_name, eve_key, vcode, assets_data)
 
                     await self.gatherCharacterProfitData(user_id, char_id, entity_name, eve_key, vcode)
                     await self.loadCharacterOrders(user_id, char_id, entity_name, eve_key, vcode)
 
                     wallet_balance = await self.getCharacterBalance(user_id, char_id, eve_key, vcode)
                 else:
-                    assets.extend(await self.loadCorporationAssets(user_id, wallet_key, corp_id, entity_name, eve_key, vcode))
+                    await self.loadCorporationAssets(user_id, wallet_key, corp_id, entity_name, eve_key, vcode, assets_data)
 
                     await self.gatherCorporationProfitData(user_id, corp_id, wallet_key, entity_name, eve_key, vcode)
                     await self.loadCorporationOrders(user_id, wallet_key, corp_id, entity_name, eve_key, vcode)
@@ -822,8 +827,11 @@ class ProfitAggregator:
 
             await self.updateAllTime(user_id)
 
-            if len(assets) != 0:
-                await db.user_assets.insert(assets)
+            try:
+                await db.user_assets.insert(assets_data)
+            except:
+                print("There was a problem updating assets for user %s" % user_id)
+                traceback.print_exc()
 
         if len(transactions) > 0:
             await db.profit_transactions.insert(transactions)
