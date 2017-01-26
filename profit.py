@@ -40,7 +40,7 @@ class ProfitAggregator:
         try:
             auth = (char_id, eve_key, eve_vcode, self._rowCount, "" if fromID is None else "&fromID=" + str(fromID))
             url = "https://api.eveonline.com/char/WalletTransactions.xml.aspx?characterID=%s&keyID=%s&vCode=%s&rowCount=%s%s" % auth
-            req = requests.get(url)
+            req = requests.get(url, timeout=2)
 
             tree = ET.fromstring(req.text)
 
@@ -62,7 +62,7 @@ class ProfitAggregator:
         try:
             auth = (wallet_key, eve_key, eve_vcode, self._rowCount, "" if fromID is None else "&fromID=" + str(fromID))
             url = "https://api.eveonline.com/corp/WalletTransactions.xml.aspx?accountKey=%s&keyID=%s&vCode=%s&rowCount=%s%s" % auth
-            req = requests.get(url)
+            req = requests.get(url, timeout=2)
 
             tree = ET.fromstring(req.text)
 
@@ -140,7 +140,7 @@ class ProfitAggregator:
         try:
             auth = (char_id, eve_key, eve_vcode)
             url = "https://api.eveonline.com/char/WalletJournal.xml.aspx?characterID=%s&keyID=%s&vCode=%s&rowCount=2000" % auth
-            req = requests.get(url)
+            req = requests.get(url, timeout=2)
 
             tree = ET.fromstring(req.text)
 
@@ -163,7 +163,7 @@ class ProfitAggregator:
         try:
             auth = (wallet_key, eve_key, eve_vcode)
             url = "https://api.eveonline.com/corp/WalletJournal.xml.aspx?accountKey=%s&keyID=%s&vCode=%s&rowCount=2000" % auth
-            req = requests.get(url)
+            req = requests.get(url, timeout=2)
 
             tree = ET.fromstring(req.text)
 
@@ -428,7 +428,7 @@ class ProfitAggregator:
         rows = []
 
         try:
-            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2))
 
             tree = ET.fromstring(req.text)
 
@@ -484,7 +484,7 @@ class ProfitAggregator:
         rows = []
 
         try:
-            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2))
 
             tree = ET.fromstring(req.text)
 
@@ -513,7 +513,7 @@ class ProfitAggregator:
         rows = []
 
         try:
-            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2))
 
             tree = ET.fromstring(req.text)
 
@@ -543,7 +543,7 @@ class ProfitAggregator:
         rows = []
 
         try:
-            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2))
 
             tree = ET.fromstring(req.text)
 
@@ -575,7 +575,7 @@ class ProfitAggregator:
         url = "https://api.eveonline.com/corp/AccountBalance.xml.aspx?keyID=%s&vCode=%s" % auth
 
         try:
-            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2))
 
             tree = ET.fromstring(req.text)
 
@@ -599,9 +599,9 @@ class ProfitAggregator:
 
         auth = (char_id, eve_key, eve_vcode)
         url = "https://api.eveonline.com/char/AccountBalance.xml.aspx?characterID=%s&keyID=%s&vCode=%s" % auth
-        
+
         try:
-            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2))
 
             tree = ET.fromstring(req.text)
 
@@ -767,8 +767,10 @@ class ProfitAggregator:
         profit_start = time.perf_counter()
         transactions = []
         user_settings = await db.GetAllUserSettings()
+        user_settings_arr = user_settings.values()
+        user_settings_count = len(user_settings_arr)
 
-        for user in user_settings.values():
+        for user in user_settings_arr:
 
             user_id = user['user_id']
             profiles_calculated = 0
@@ -842,6 +844,7 @@ class ProfitAggregator:
                                                                                'http://' + publish_url + '/publish/settings', timeout=5))
 
         print("Profits aggregated in %s seconds" % (time.perf_counter() - profit_start))
+        print("Average time was %s seconds per user for %s total users" % ((time.perf_counter() - profit_start) / user_settings_count, user_settings_count))
 
 
 if __name__ == "__main__":
