@@ -1243,10 +1243,11 @@ class SubscriptionUpdater:
 
         auth = (1000, 5682889, '***REMOVED***')
         url = "https://api.eveonline.com/corp/WalletJournal.xml.aspx?accountKey=%s&keyID=%s&vCode=%s&rowCount=1000" % auth
-        req = requests.get(url)
         rows = []
 
         try:
+            req = requests.get(url)
+
             tree = ET.fromstring(req.text)
 
             if tree.find('error') is not None:

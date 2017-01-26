@@ -425,11 +425,11 @@ class ProfitAggregator:
         auth = (char_id, eve_key, eve_vcode)
         url = "https://api.eveonline.com/char/MarketOrders.xml.aspx?characterID=%s&keyID=%s&vCode=%s" % auth
 
-        req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
-
         rows = []
 
         try:
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
+
             tree = ET.fromstring(req.text)
 
             if tree.find('error') is not None:
@@ -540,11 +540,11 @@ class ProfitAggregator:
         auth = (eve_key, eve_vcode)
         url = "https://api.eveonline.com/corp/MarketOrders.xml.aspx?keyID=%s&vCode=%s" % auth
 
-        req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
-
         rows = []
 
         try:
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
+
             tree = ET.fromstring(req.text)
 
             if tree.find('error') is not None:
@@ -574,9 +574,9 @@ class ProfitAggregator:
         auth = (eve_key, eve_vcode)
         url = "https://api.eveonline.com/corp/AccountBalance.xml.aspx?keyID=%s&vCode=%s" % auth
 
-        req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
-
         try:
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
+
             tree = ET.fromstring(req.text)
 
             if tree.find('error') is not None:
@@ -599,10 +599,10 @@ class ProfitAggregator:
 
         auth = (char_id, eve_key, eve_vcode)
         url = "https://api.eveonline.com/char/AccountBalance.xml.aspx?characterID=%s&keyID=%s&vCode=%s" % auth
-
-        req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
-
+        
         try:
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url))
+
             tree = ET.fromstring(req.text)
 
             if tree.find('error') is not None:
