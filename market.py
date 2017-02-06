@@ -1022,7 +1022,7 @@ class PortfolioAggregator:
                 if 'market' not in user_settings[user_id]:
                     print("Defaulting region to Jita for user %s and portfolio %s" % (user_id, doc['portfolioID']))
                 elif 'region' in user_settings[user_id]['market']:
-                    region = user_settings[user_id]['market']['region']
+                    region = int(user_settings[user_id]['market'].get('region', 10000002))
 
                 for component in doc['components']:
 
