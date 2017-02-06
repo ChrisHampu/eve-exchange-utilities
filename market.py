@@ -932,13 +932,15 @@ class PortfolioAggregator:
                 sell_price = cached['sell_price']
             else:
 
-                orders = [order for order in orderInterface._persisted_orders if order['type'] == _type and order['region'] == region]
+                if orderInterface._persisted_orders is not None:
 
-                buy_orders = [order['price'] for order in orders if order['buy'] == True]
-                sell_orders = [order['price'] for order in orders if order['buy'] == False]
+                    orders = [order for order in orderInterface._persisted_orders if order['type'] == _type and order['region'] == region]
 
-                buy_price = max(buy_orders) if len(buy_orders) > 0 else _buy_price
-                sell_price = min(sell_orders) if len(sell_orders) > 0 else _sell_price
+                    buy_orders = [order['price'] for order in orders if order['buy'] == True]
+                    sell_orders = [order['price'] for order in orders if order['buy'] == False]
+
+                    buy_price = max(buy_orders) if len(buy_orders) > 0 else _buy_price
+                    sell_price = min(sell_orders) if len(sell_orders) > 0 else _sell_price
 
                 self.simulation_cache[_type] = {
                     'buy_price': buy_price,
