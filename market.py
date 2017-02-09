@@ -1379,6 +1379,8 @@ class TickerAggregator:
                         regionComponent['priceChangePercent'] = 0
                         regionComponent['volume'] = 0
                         regionComponent['marketCap'] = 0
+                        regionComponent['tradeVolume'] = 0
+                        regionComponent['spread'] = 0
                         continue
 
                     previousPrice = regionComponent.get('price', price)
@@ -1403,6 +1405,8 @@ class TickerAggregator:
                     regionComponent['priceChangePercent'] = priceChangePercent
                     regionComponent['volume'] = volume
                     regionComponent['marketCap'] = marketCap
+                    regionComponent['tradeVolume'] = data['tradeVolume']
+                    regionComponent['spread'] = data['spread']
 
                 averageMarketVolume = sellOrderVolume / component_count # Average trade volume per ite
                 averageSpread = averageSpread / component_count
