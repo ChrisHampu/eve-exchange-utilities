@@ -997,6 +997,8 @@ class PortfolioAggregator:
             print("Skipping portfolio aggregation since redis is unavailable")
             return
 
+        print("Starting portfolio aggregation")
+
         async for doc in db.portfolios.find():
 
             try:
