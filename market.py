@@ -1393,8 +1393,8 @@ class TickerAggregator:
                     volume = data['sellVolume']
                     marketCap = int(data['sellVolume'] * price)
 
-                    priceChange = previousPrice - price
-                    priceChangePercent = ((previousPrice / price) - 1) * 100
+                    priceChange = price - previousPrice
+                    priceChangePercent = ((price / previousPrice) - 1) * 100
 
                     sellOrderCount += data['sellOrders']
                     sellOrderVolume += volume
@@ -1478,7 +1478,7 @@ class TickerAggregator:
                     component['contribution'] = contribution
 
                 nextIndex = currentIndex * (1 + contributionSum / 100)
-                indexChange = currentIndex - nextIndex
+                indexChange = nextIndex - currentIndex
 
                 indexChangePercent = round((currentIndex / nextIndex - 1) * 100, 2)
 
