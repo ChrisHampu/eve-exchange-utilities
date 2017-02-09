@@ -453,6 +453,7 @@ class OrderAggregator:
         if settings.is_hourly:
             await self.AggregateHourly()
             await self._deepstream.PublishHourlyAggregates()
+            cache.LoadHourlyRedisCache(self._aggregates_hourly)
 
         if settings.is_daily:
             await self.AggregateDaily()
