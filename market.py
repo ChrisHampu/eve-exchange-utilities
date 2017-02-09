@@ -1230,6 +1230,285 @@ class PortfolioAggregator:
 
         print("Portfolios updated in %s seconds" % (time.perf_counter() - start))
 
+
+class TickerAggregator:
+    def __init__(self):
+        pass
+
+    async def publishTickers(self):
+        print("Publishing tickers")
+
+        try:
+            await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
+                                                                                   'http://' + publish_url + '/publish/tickers', timeout=5))
+        except:
+            print("Error while publishing tickers")
+        print("Published tickers")
+
+    async def aggregateTickers(self):
+
+        start = time.perf_counter()
+
+        async for doc in db.tickers.find():
+
+            id = doc.get('_id')
+            components = doc.get('components', [])
+            regions = doc.get('regions', {})
+            indexDivisor = doc.get('divisor', 1)
+
+            component_count = len(components)
+            market_data = {}
+
+            # Begin loading all market data for these components for all regions
+            for regionID in orderInterface.regions:
+
+                regionID = str(regionID)
+
+                market_data[regionID] = {}
+
+                pip = cache.redis.pipeline()
+
+                for typeID in components:
+
+                    typeID = int(typeID)
+
+                    if typeID is 0:
+                        continue
+
+                    market_data[regionID][typeID] = {
+                        'sellVolume': 0,
+                        'sellOrders': 0
+                    }
+
+                    # Market data
+                    pip.hmget('hrly:%s-%s' % (typeID, regionID),
+                                  ['type', 'spread', 'tradeVolume', 'buyPercentile'])
+
+                    # Market orders
+                    length = cache.redis.llen('ord_cnt:%s-%s' % (typeID, regionID))
+
+                    for k in cache.redis.lrange('ord_cnt:%s-%s' % (typeID, regionID), 0, length):
+                        pip.hmget('ord:%s' % k.decode('ascii'), ['type', 'buy', 'volume', 'price'])
+
+                market_documents = pip.execute()
+
+                for row in market_documents:
+
+                    #print(row)
+
+                    if row[0] == None or row[1] == None or row[2] == None or row[3] == None:
+                        continue
+
+                    # Document is an order
+                    if row[1] == b'True' or row[1] == b'False':
+
+                        # Skip buy orders
+                        if row[1] == b'True':
+                            continue
+
+                        market_data[regionID][float(row[0])]['sellOrders'] += 1
+                        market_data[regionID][float(row[0])]['sellVolume'] += int(row[2])
+
+                    # Document is market data
+                    else:
+
+                        type = float(row[0])
+                        market_data[regionID][type]['spread'] = float(row[1])
+                        market_data[regionID][type]['tradeVolume'] = int(row[2])
+                        market_data[regionID][type]['buyPercentile'] = float(row[3])
+
+            # After data is grouped, begin aggregation
+            for regionID in orderInterface.regions:
+
+                regionID = str(regionID)
+
+                if regionID not in regions:
+                    regions[regionID] = {}
+
+                region = regions[regionID]
+
+                regionComponents = region.get('regionComponents', [])
+                hourlyChart = region.get('hourlyChart', [])
+
+                # Totals
+                sellOrderVolume = 0 # Volume of all sell orders
+                sellOrderCount = 0 # Number of sell orders
+                totalMarketCap = 0 # Sell orders multiplied by price for each item
+
+                # Spread
+                averageSpread = 0 # Current average spread of all items
+                previousAverageSpread = region.get('averageSpread', 0) # Previously computed spread
+
+                # Volume average per item
+                previousAverageMarketVolume = region.get('averageMarketVolume', 0)
+
+                # Volume traded
+                volumeTraded = 0  # Current hourly traded volume
+                previousVolumeTraded = region.get('volumeTraded', 0) # Previous hourly traded volume
+
+                # Value
+                averageBuyValue = 0 # Current total buy value
+                previousBuyValue = region.get('averageBuyValue', 0) # Previous hourly price
+
+                for typeID in components:
+
+                    typeID = int(typeID)
+
+                    if typeID is 0:
+                        continue
+
+                    regionComponent = next((x for x in regionComponents if x['typeID'] == typeID), None)
+
+                    if regionComponent is None:
+                        regionComponent = {
+                            'typeID': typeID,
+                        }
+
+                        regionComponents.append(regionComponent)
+
+                    data = market_data[regionID][typeID]
+
+                    # Break price down by millions
+                    #price = round(data.get('buyPercentile', 0) / 1000000, 7)
+                    price = round(data.get('buyPercentile', 0), 2)
+
+                    if price == 0:
+                        regionComponent['price'] = 0
+                        regionComponent['previousPrice'] = 0
+                        regionComponent['priceChange'] = 0
+                        regionComponent['priceChangePercent'] = 0
+                        regionComponent['volume'] = 0
+                        regionComponent['marketCap'] = 0
+                        continue
+
+                    previousPrice = regionComponent.get('price', price)
+
+                    volume = data['sellVolume']
+                    marketCap = int(data['sellVolume'] * price)
+
+                    priceChange = previousPrice - price
+                    priceChangePercent = ((previousPrice / price) - 1) * 100
+
+                    sellOrderCount += data['sellOrders']
+                    sellOrderVolume += volume
+                    totalMarketCap += marketCap
+
+                    averageSpread += data['spread']
+                    volumeTraded += data['tradeVolume']
+                    averageBuyValue += price
+
+                    regionComponent['price'] = price
+                    regionComponent['previousPrice'] = previousPrice
+                    regionComponent['priceChange'] = priceChange
+                    regionComponent['priceChangePercent'] = priceChangePercent
+                    regionComponent['volume'] = volume
+                    regionComponent['marketCap'] = marketCap
+
+                averageMarketVolume = sellOrderVolume / component_count # Average trade volume per ite
+                averageSpread = averageSpread / component_count
+                averageBuyValue = averageBuyValue / component_count
+
+                if previousAverageSpread == 0:
+                    spreadChange = 0
+                    spreadChangePercent = 0
+                else:
+                    spreadChange = previousAverageSpread - averageSpread # Difference between current spread and previous spread
+                    spreadChangePercent = ((previousAverageSpread / averageSpread) - 1) * 100 if averageSpread != 0 else 0 # Percentage of the change
+
+                if previousAverageMarketVolume == 0:
+                    averageMarketVolumeChange = 0
+                    averageMarketVolumeChangePercent = 0
+                else:
+                    averageMarketVolumeChange = previousAverageMarketVolume - averageMarketVolume # Change in trade volume from previous to current
+                    averageMarketVolumeChangePercent = ((previousAverageMarketVolume / averageMarketVolume) - 1) * 100 if averageMarketVolume != 0 else 0 # Percentage of the change
+
+                if previousVolumeTraded == 0:
+                    volumeTradedChange = 0
+                    volumeTradedChangePercent = 0
+                else:
+                    volumeTradedChange = previousVolumeTraded - volumeTraded
+                    volumeTradedChangePercent = ((previousVolumeTraded / volumeTraded) - 1) * 100 if volumeTraded != 0 else 0
+
+                if previousBuyValue == 0:
+                    averageBuyValueChange = 0
+                    averageBuyValueChangePercent = 0
+                else:
+                    averageBuyValueChange = previousBuyValue - averageBuyValue # Delta change in buy value
+                    averageBuyValueChangePercent = ((previousBuyValue / averageBuyValue) - 1) * 100 if averageBuyValue != 0 else 0  # Percentage of the change
+
+                # Index
+                currentIndex = region.get('index', 0)
+
+                # If index has not been established yet, trigger an IPO
+                if currentIndex == 0:
+
+                    for component in regionComponents:
+                        currentIndex += component.get('price', 0)
+
+                    # Apply the index divisor to the initial index
+                    currentIndex = currentIndex / indexDivisor
+
+                if currentIndex == 0:
+                    continue
+
+                contributionSum = 0
+
+                # Gather metrics for each component
+                for component in regionComponents:
+
+                    if component['previousPrice'] == 0:
+                        continue
+
+                    weight = component['price'] / totalMarketCap * 100 if totalMarketCap != 0 else 0
+                    performancePercent = ((component['price'] / component['previousPrice']) - 1) * 100
+                    contribution = performancePercent / 100 * weight
+                    contributionSum += contribution
+
+                    component['weight'] = weight
+                    component['performancePercent'] = performancePercent
+                    component['contribution'] = contribution
+
+                nextIndex = currentIndex * (1 + contributionSum / 100)
+                indexChange = currentIndex - nextIndex
+
+                indexChangePercent = round((currentIndex / nextIndex - 1) * 100, 2)
+
+                hourlyChart.append({
+                    'index': nextIndex,
+                    'time': settings.utcnow
+                })
+
+                regions[regionID] = {
+                    'index': nextIndex,
+                    'indexChange': indexChange,
+                    'indexChangePercent': indexChangePercent,
+                    'averageMarketVolume': averageMarketVolume,
+                    'averageSpread': averageSpread,
+                    'averageBuyValue': averageBuyValue,
+                    'spreadChange': spreadChange,
+                    'spreadChangePercent': spreadChangePercent,
+                    'averageMarketVolumeChange': averageMarketVolumeChange,
+                    'averageMarketVolumeChangePercent': averageMarketVolumeChangePercent,
+                    'volumeTraded': volumeTraded,
+                    'volumeTradedChange': volumeTradedChange,
+                    'volumeTradedChangePercent': volumeTradedChangePercent,
+                    'averageBuyValueChange': averageBuyValueChange,
+                    'averageBuyValueChangePercent': averageBuyValueChangePercent,
+                    'regionComponents': regionComponents,
+                    'hourlyChart': hourlyChart[:72]
+                }
+
+            await db.tickers.find_and_modify({'_id': ObjectId(oid=id)}, {
+                '$set': {
+                    'regions': regions
+                }
+            })
+
+        await self.publishTickers()
+
+        print("Tickers updated in %s seconds" % (time.perf_counter() - start))
+
+
 class SubscriptionUpdater:
     def __init__(self):
         pass
@@ -1544,6 +1823,7 @@ if __name__ == "__main__":
     loop.run_until_complete(MarketAggregator().StartAggregation())
     loop.run_until_complete(PortfolioAggregator().aggregatePortfolios())
     loop.run_until_complete(SubscriptionUpdater().updateSubscriptions())
+    loop.run_until_complete(TickerAggregator().aggregateTickers())
 
     print("Finished in %s seconds" % (time.perf_counter() - script_start))
 
