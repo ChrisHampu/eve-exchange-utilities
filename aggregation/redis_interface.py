@@ -62,6 +62,32 @@ class CacheInterface:
 
         print("Stale market data purged in %s seconds" % (time.perf_counter() - purgeTimer))
 
+    def LoadHourlyRedisCache(self, aggregates):
+        if not self.RedisAvailable():
+            print("Skipping hourly redis cache load since redis is unavailable")
+
+        print("Loading hourly documents into redis cache")
+
+        loadTimer = time.perf_counter()
+        hourlyDocs = {}
+
+        for doc in aggregates:
+            if doc['type'] in hourlyDocs:
+                hourlyDocs[doc['type']] = doc
+
+            else:
+                hourlyDocs[doc['type']] = doc
+
+        pip = self._redis.pipeline()
+
+        for k in hourlyDocs:
+            for reg in hourlyDocs[k]['regions']:
+                pip.hmset('hrly:' + str(k) + '-' + str(reg['region']), {**reg, **{'type': k}})
+
+        pip.execute()
+
+        print("Loaded %s hourly documents into cache in %s seconds" % (len(hourlyDocs), time.perf_counter() - loadTimer))
+
     def LoadDailyRedisCache(self, aggregates):
         if not self.RedisAvailable():
             print("Skipping daily redis cache load since redis is unavailable")
