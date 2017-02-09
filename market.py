@@ -1247,6 +1247,11 @@ class TickerAggregator:
 
     async def aggregateTickers(self):
 
+        if not settings.is_hourly:
+            return
+
+        print("Starting hourly ticker aggregation")
+
         start = time.perf_counter()
 
         async for doc in db.tickers.find():
