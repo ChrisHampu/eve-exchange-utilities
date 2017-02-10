@@ -1390,6 +1390,9 @@ class TickerAggregator:
 
                     previousPrice = regionComponent.get('price', price)
 
+                    if previousPrice == 0:
+                        previousPrice = price
+
                     volume = data['sellVolume']
                     marketCap = int(data['sellVolume'] * price)
 
