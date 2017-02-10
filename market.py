@@ -1468,11 +1468,8 @@ class TickerAggregator:
                 # Gather metrics for each component
                 for component in regionComponents:
 
-                    if component['previousPrice'] == 0:
-                        continue
-
                     weight = component['marketCap'] / totalMarketCap * 100 if totalMarketCap != 0 else 0
-                    performancePercent = ((component['previousPrice'] / component['price']) - 1) * 100
+                    performancePercent = ((component['previousPrice'] / component['price']) - 1) * 100 if component['price'] != 0 else 0
                     contribution = performancePercent / 100 * weight
                     contributionSum += contribution
 
