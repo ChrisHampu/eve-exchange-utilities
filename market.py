@@ -1471,8 +1471,8 @@ class TickerAggregator:
                     if component['previousPrice'] == 0:
                         continue
 
-                    weight = component['price'] / totalMarketCap * 100 if totalMarketCap != 0 else 0
-                    performancePercent = ((component['price'] / component['previousPrice']) - 1) * 100
+                    weight = component['marketCap'] / totalMarketCap * 100 if totalMarketCap != 0 else 0
+                    performancePercent = ((component['previousPrice'] / component['price']) - 1) * 100
                     contribution = performancePercent / 100 * weight
                     contributionSum += contribution
 
