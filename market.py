@@ -1480,7 +1480,7 @@ class TickerAggregator:
                 nextIndex = currentIndex * (1 + contributionSum / 100)
                 indexChange = nextIndex - currentIndex
 
-                indexChangePercent = round((currentIndex / nextIndex - 1) * 100, 2)
+                indexChangePercent = round((nextIndex / currentIndex - 1) * 100, 2)
 
                 hourlyChart.append({
                     'index': nextIndex,
