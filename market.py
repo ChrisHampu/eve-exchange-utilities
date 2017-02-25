@@ -1186,7 +1186,7 @@ class PortfolioAggregator:
                             'growth': growth
                         }
 
-                        hourly.append(hourlyResult)
+                        hourly.insert(0, hourlyResult)
                     else:
 
                         hourlyResult = {
@@ -1199,11 +1199,11 @@ class PortfolioAggregator:
                             'materialValue': totalMaterialCost
                         }
 
-                        hourly.append(hourlyResult)
+                        hourly.insert(0, hourlyResult)
 
                 if settings.is_daily:
 
-                    daily.append(hourlyResult)
+                    daily.insert(0, hourlyResult)
 
                 await db.portfolios.find_and_modify({'_id': ObjectId(oid=doc['_id'])}, {
                     '$set': {
@@ -1482,7 +1482,7 @@ class TickerAggregator:
 
                 indexChangePercent = round((nextIndex / currentIndex - 1) * 100, 2)
 
-                hourlyChart.append({
+                hourlyChart.insert(0, {
                     'index': nextIndex,
                     'time': settings.utcnow
                 })
