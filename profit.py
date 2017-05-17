@@ -20,6 +20,7 @@ except ImportError:
     import xml.etree.ElementTree as ET
 
 publish_url = 'localhost:4501'
+standard_headers = {'user_agent': 'https://eve.exchange'}
 
 settings = _settings.Settings()
 db = database.DatabaseConnector()
@@ -40,7 +41,7 @@ class ProfitAggregator:
         try:
             auth = (char_id, eve_key, eve_vcode, self._rowCount, "" if fromID is None else "&fromID=" + str(fromID))
             url = "https://api.eveonline.com/char/WalletTransactions.xml.aspx?characterID=%s&keyID=%s&vCode=%s&rowCount=%s%s" % auth
-            req = requests.get(url, timeout=2)
+            req = requests.get(url, timeout=2, headers=standard_headers)
 
             tree = ET.fromstring(req.text)
 
@@ -62,7 +63,7 @@ class ProfitAggregator:
         try:
             auth = (wallet_key, eve_key, eve_vcode, self._rowCount, "" if fromID is None else "&fromID=" + str(fromID))
             url = "https://api.eveonline.com/corp/WalletTransactions.xml.aspx?accountKey=%s&keyID=%s&vCode=%s&rowCount=%s%s" % auth
-            req = requests.get(url, timeout=2)
+            req = requests.get(url, timeout=2, headers=standard_headers)
 
             tree = ET.fromstring(req.text)
 
@@ -140,7 +141,7 @@ class ProfitAggregator:
         try:
             auth = (char_id, eve_key, eve_vcode)
             url = "https://api.eveonline.com/char/WalletJournal.xml.aspx?characterID=%s&keyID=%s&vCode=%s&rowCount=2000" % auth
-            req = requests.get(url, timeout=2)
+            req = requests.get(url, timeout=2, headers=standard_headers)
 
             tree = ET.fromstring(req.text)
 
@@ -163,7 +164,7 @@ class ProfitAggregator:
         try:
             auth = (wallet_key, eve_key, eve_vcode)
             url = "https://api.eveonline.com/corp/WalletJournal.xml.aspx?accountKey=%s&keyID=%s&vCode=%s&rowCount=2000" % auth
-            req = requests.get(url, timeout=2)
+            req = requests.get(url, timeout=2, headers=standard_headers)
 
             tree = ET.fromstring(req.text)
 
@@ -428,7 +429,7 @@ class ProfitAggregator:
         rows = []
 
         try:
-            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2))
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2, headers=standard_headers))
 
             tree = ET.fromstring(req.text)
 
@@ -484,7 +485,7 @@ class ProfitAggregator:
         rows = []
 
         try:
-            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2))
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2, headers=standard_headers))
 
             tree = ET.fromstring(req.text)
 
@@ -513,7 +514,7 @@ class ProfitAggregator:
         rows = []
 
         try:
-            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2))
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2, headers=standard_headers))
 
             tree = ET.fromstring(req.text)
 
@@ -543,7 +544,7 @@ class ProfitAggregator:
         rows = []
 
         try:
-            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2))
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2, headers=standard_headers))
 
             tree = ET.fromstring(req.text)
 
@@ -575,7 +576,7 @@ class ProfitAggregator:
         url = "https://api.eveonline.com/corp/AccountBalance.xml.aspx?keyID=%s&vCode=%s" % auth
 
         try:
-            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2))
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2, headers=standard_headers))
 
             tree = ET.fromstring(req.text)
 
@@ -601,7 +602,7 @@ class ProfitAggregator:
         url = "https://api.eveonline.com/char/AccountBalance.xml.aspx?characterID=%s&keyID=%s&vCode=%s" % auth
 
         try:
-            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2))
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2, headers=standard_headers))
 
             tree = ET.fromstring(req.text)
 
@@ -642,7 +643,7 @@ class ProfitAggregator:
         try:
             keyInfo = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get,
                                                                                              'https://api.eveonline.com/account/APIKeyInfo.xml.aspx?characterID=%s&keyID=%s&vCode=%s' % auth,
-                                                                                             timeout=5))
+                                                                                             timeout=5, headers=standard_headers))
 
             tree = ET.fromstring(keyInfo.text)
 

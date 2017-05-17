@@ -26,6 +26,8 @@ publish_url = 'localhost:4501'
 premiumCost = 150000000
 api_access_cost = 150000000
 
+standard_headers = {'user_agent': 'https://eve.exchange'}
+
 override_basePrice = {
     11567: 85000000000,
     3764: 85000000000,
@@ -39,7 +41,10 @@ override_basePrice = {
     3514: 100000000000
 }
 
-os.chdir(os.path.dirname(sys.argv[0]))
+
+osdirname = os.path.dirname(sys.argv[0])
+
+os.chdir(osdirname if osdirname is not '' else '.')
 
 # Load static data
 with open(os.path.realpath('./sde/blueprints.js'), 'r', encoding='utf-8') as f:
@@ -178,7 +183,7 @@ class OrderInterface:
 
         # The executor will run the request in a dedicated thread
         try:
-            req = await asyncio.get_event_loop().run_in_executor(None, requests.get, "https://crest-tq.eveonline.com/market/%s/orders/all/?page=%s" % (region, page))
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, "https://crest-tq.eveonline.com/market/%s/orders/all/?page=%s" % (region, page), headers=standard_headers))
 
             js = req.json()
         except:
@@ -862,7 +867,7 @@ class PortfolioAggregator:
             self.adjusted_prices = {}
 
             try:
-                req = requests.get('https://esi.tech.ccp.is/latest/markets/prices/?datasource=tranquility')
+                req = requests.get('https://esi.tech.ccp.is/latest/markets/prices/?datasource=tranquility', headers=standard_headers)
 
                 prices = req.json()
 
@@ -875,7 +880,7 @@ class PortfolioAggregator:
 
     def buildSystemIndexes(self):
         try:
-            res = requests.get('https://crest-tq.eveonline.com/industry/systems/', timeout=10)
+            res = requests.get('https://crest-tq.eveonline.com/industry/systems/', timeout=10, headers=standard_headers)
 
             doc = json.loads(res.text)
 
@@ -1539,7 +1544,7 @@ class SubscriptionUpdater:
         rows = []
 
         try:
-            req = requests.get(url)
+            req = requests.get(url, headers=standard_headers)
 
             tree = ET.fromstring(req.text)
 
