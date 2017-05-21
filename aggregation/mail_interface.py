@@ -66,7 +66,7 @@ class MailInterface:
                 if work is None:
                     return
 
-                mail = json.loads(work)
+                mail = json.loads(str(work, 'utf-8'))
 
                 if 'body' in mail and 'recipient_id' in mail and 'subject' in mail:
 
