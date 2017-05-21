@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-development_mode = True
+development_mode = False
 
 class Settings:
     def __init__(self):
