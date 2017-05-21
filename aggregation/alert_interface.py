@@ -20,6 +20,10 @@ config = _settings.Settings()
 
 db = database.DatabaseConnector()
 
+osdirname = os.path.dirname(sys.argv[0])
+
+os.chdir(osdirname if osdirname is not '' else '.')
+
 with open(os.path.realpath('./sde/market_id_to_name.json'), 'r', encoding='utf-8') as f:
     market_id_to_name = json.loads(f.read())
 
