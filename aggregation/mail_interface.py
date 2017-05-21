@@ -15,7 +15,8 @@ cache = redis_interface.CacheInterface(None)
 class MailInterface:
     def __init__(self):
         self.esi_access_token = esi.get_esi_access_token()
-        self.sender_id = int(cache.redis.get('esi_mail_sender'))
+        cached_id = cache.redis.get('esi_mail_sender')
+        self.sender_id = int(cached_id) if cached_id is not None else None
         self.mail_wait_queue = "esi_mail_wait_queue"
         self.mail_work_queue = "esi_mail_work_queue"
 
