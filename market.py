@@ -58,7 +58,7 @@ with open(os.path.realpath('./sde/blueprint_basePrice.js'), 'r', encoding='utf-8
         override_basePrice[int(i)] = blueprints_basePrice[i]
 
 settings = _settings.Settings()
-db = database.DatabaseConnector()
+db = database.db
 
 standard_headers = settings.standard_headers
 

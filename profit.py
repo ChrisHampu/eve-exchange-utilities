@@ -22,7 +22,7 @@ except ImportError:
 publish_url = 'localhost:4501'
 
 settings = _settings.Settings()
-db = database.DatabaseConnector()
+db = database.db
 cache = redis_interface.CacheInterface(OrderInterface())
 
 standard_headers = _settings.standard_headers

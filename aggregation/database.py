@@ -25,6 +25,8 @@ class DatabaseConnector:
 
         self.settings_cache = None
 
+        print("Initialized database connector")
+
     async def GetAllUserSettings(self) -> Dict:
         if self.settings_cache is not None:
             return self.settings_cache
@@ -41,3 +43,5 @@ class DatabaseConnector:
             self.settings_cache[user['user_id']] = user
 
         return self.settings_cache
+
+db = DatabaseConnector()

@@ -19,7 +19,7 @@ publish_url = 'localhost:4501'
 mailer = _mail.MailInterface()
 config = _settings.Settings()
 
-db = database.DatabaseConnector()
+db = database.db
 
 osdirname = os.path.dirname(sys.argv[0])
 

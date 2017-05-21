@@ -5,7 +5,7 @@ import traceback
 from . import settings as _settings, database
 
 settings = _settings.Settings()
-db = database.DatabaseConnector()
+db = database.db
 
 forge_region = 10000002
 
