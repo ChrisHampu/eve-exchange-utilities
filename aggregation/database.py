@@ -21,6 +21,7 @@ class DatabaseConnector:
         self.audit = self.database.audit_log
         self.user_assets = self.database.user_assets
         self.tickers = self.database.tickers
+        self.alerts = self.database.alerts
 
         self.settings_cache = None
 

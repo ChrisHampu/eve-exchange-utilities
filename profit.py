@@ -20,11 +20,12 @@ except ImportError:
     import xml.etree.ElementTree as ET
 
 publish_url = 'localhost:4501'
-standard_headers = {'user_agent': 'https://eve.exchange'}
 
 settings = _settings.Settings()
 db = database.DatabaseConnector()
 cache = redis_interface.CacheInterface(OrderInterface())
+
+standard_headers = _settings.standard_headers
 
 # TODO: add error checking to every single request
 class ProfitAggregator:

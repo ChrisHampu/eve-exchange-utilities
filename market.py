@@ -14,7 +14,7 @@ import sys
 import os
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
-from aggregation import settings as _settings, database, redis_interface
+from aggregation import settings as _settings, database, redis_interface, alert_interface
 
 try:
     import xml.etree.cElementTree as ET
@@ -25,8 +25,6 @@ except ImportError:
 publish_url = 'localhost:4501'
 premiumCost = 150000000
 api_access_cost = 150000000
-
-standard_headers = {'user_agent': 'https://eve.exchange'}
 
 override_basePrice = {
     11567: 85000000000,
@@ -61,6 +59,8 @@ with open(os.path.realpath('./sde/blueprint_basePrice.js'), 'r', encoding='utf-8
 
 settings = _settings.Settings()
 db = database.DatabaseConnector()
+
+standard_headers = settings.standard_headers
 
 class Utilities:
     def __init__(self):
@@ -468,7 +468,8 @@ class OrderAggregator:
 
         await asyncio.gather(*[
             cache.LoadCurrentRedisCache(self._aggregates_minutes),
-            self._deepstream.PublishMinuteAggregates()
+            self._deepstream.PublishMinuteAggregates(),
+            alert_interface.AlertInterface().check_price_alerts(self._aggregates_minutes)
         ])
 
     async def DoThreadedInsert(self, collection, data) -> None:

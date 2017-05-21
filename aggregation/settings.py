@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-development_mode = False 
+development_mode = True
 
 class Settings:
     def __init__(self):
@@ -46,3 +46,7 @@ class Settings:
     @property
     def hourly_data_prune_time(self):
         return self._now_utc - timedelta(seconds=604800) # 1 week
+
+    @property
+    def standard_headers(self):
+        return {'user_agent': 'https://eve.exchange'}
