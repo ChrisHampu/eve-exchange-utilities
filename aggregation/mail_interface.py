@@ -30,6 +30,8 @@ class MailInterface:
 
         cache.redis.lpush(self.mail_wait_queue, json.dumps(obj))
 
+        print('Queued new mail for %s' % recipient_id)
+
     async def handleMailUpdates(self):
 
         if self.esi_access_token == None:
