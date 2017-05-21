@@ -99,7 +99,11 @@ class AlertInterface:
     async def check_price_alerts(self, minute_docs):
         print("Checking price alerts")
 
-        self.user_settings = await db.GetAllUserSettings()
+        try:
+            self.user_settings = await db.GetAllUserSettings()
+        except:
+            print("Failed to load all user settings")
+            return
 
         for alert in await db.alerts.find({
             'nextTrigger': {'$lt': config.utcnow},
