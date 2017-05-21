@@ -63,7 +63,10 @@ class AlertInterface:
                 }
             })
 
-        print('triggered alert %s for %s' % (alert['_id'], alert['user_id']))
+        await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
+                                                           'http://' + publish_url + '/publish/alerts/' + alert['user_id'], timeout=5))
+
+        print('Triggered alert %s for %s' % (alert['_id'], alert['user_id']))
 
     def get_user_region(self, user_id):
         user = self.user_settings.get(user_id, None)

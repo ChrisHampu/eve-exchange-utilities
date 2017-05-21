@@ -1,4 +1,6 @@
 
 */5 * * * * run-one python3 /home/ubuntu/utilities/market.py >> /home/ubuntu/utilities/market.log 2>&1
 
+*/5 * * * * run-one python3 /home/ubuntu/utilities/mail.py >> /home/ubuntu/utilities/mail.log 2>&1
+
 0 * * * * run-one python3 /home/ubuntu/utilities/profit.py >> /home/ubuntu/utilities/profit.log 2>&1

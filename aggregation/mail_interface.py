@@ -81,7 +81,7 @@ class MailInterface:
 
                     prepped_req.headers['Content-Length'] = len(prepped_req.body)
 
-                    print("Sending mail to %s" % mail['recipient_id'])
+                    print("Sending mail to %s at %s" % (mail['recipient_id'], config.utcnow))
 
                     resp = s.send(prepped_req, timeout=5)
 
