@@ -22,6 +22,7 @@ class DatabaseConnector:
         self.user_assets = self.database.user_assets
         self.tickers = self.database.tickers
         self.alerts = self.database.alerts
+        self.alerts_log = self.database.alerts_log
 
         self.settings_cache = None
 

@@ -38,40 +38,49 @@ class AlertInterface:
 
         if alert_settings == None:
             print("Unable to trigger alert for user %s due to missing settings document" % alert['user_id'])
-            return
+            return False
 
-        show_browser = alert_settings.get('canShowBrowserNotification', True)
-        send_evemail = alert_settings.get('canSendMailNotification', True)
+        try:
+            show_browser = alert_settings.get('canShowBrowserNotification', True)
+            send_evemail = alert_settings.get('canSendMailNotification', True)
 
-        if show_browser == True:
-            msg_doc = {
-                'user_id': alert['user_id'],
-                'message': message
-            }
+            if show_browser == True:
+                msg_doc = {
+                    'user_id': alert['user_id'],
+                    'message': message
+                }
+
+                await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
+                                                                                        'http://' + publish_url + '/publish/alert',
+                                                                                        timeout=5, json=msg_doc))
+
+            if send_evemail == True:
+                if alert['alertType'] == 0:
+                    subject = 'Price Alert - EVE Exchange'
+                else:
+                    subject = 'Alert - EVE Exchange'
+
+                mailer.queueMail(alert['user_id'], subject, message)
+
+                db.alerts.find_and_modify({'user_id': alert['user_id'], '_id': alert['_id']}, {
+                    '$set': {
+                        'nextTrigger': config.utcnow + timedelta(hours=alert['frequency']),
+                        'lastTrigger': config.utcnow
+                    }
+                })
+
+            self.log_alert(alert, message)
 
             await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
-                                                                                    'http://' + publish_url + '/publish/alert',
-                                                                                    timeout=5, json=msg_doc))
+                                                            'http://' + publish_url + '/publish/alerts/' + str(alert['user_id']), timeout=5))
 
-        if send_evemail == True:
-            if alert['alertType'] == 0:
-                subject = 'Price Alert - EVE Exchange'
-            else:
-                subject = 'Alert - EVE Exchange'
+            print('Triggered alert %s for %s' % (alert['_id'], alert['user_id']))
+        except:
+            traceback.print_exc()
+            print('Error while triggering alert %s for %s' % (alert['_id'], alert['user_id']))
+            return False
 
-            mailer.queueMail(alert['user_id'], subject, message)
-
-            db.alerts.find_and_modify({'user_id': alert['user_id'], '_id': alert['_id']}, {
-                '$set': {
-                    'nextTrigger': config.utcnow + timedelta(hours=alert['frequency']),
-                    'lastTrigger': config.utcnow
-                }
-            })
-
-        await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
-                                                           'http://' + publish_url + '/publish/alerts/' + str(alert['user_id']), timeout=5))
-
-        print('Triggered alert %s for %s' % (alert['_id'], alert['user_id']))
+        return True
 
     def get_user_region(self, user_id):
         user = self.user_settings.get(user_id, None)
@@ -95,6 +104,15 @@ class AlertInterface:
         alert_settings = user.get('alerts', None)
 
         return alert_settings
+
+    def log_alert(self, alert, message):
+
+        db.alerts_log.insert({
+            'user_id': alert['user_id'],
+            'alertType': alert['alertType'],
+            'message': message,
+            'time': config.utcnow
+        })
 
     async def check_price_alerts(self, minute_docs):
         print("Checking price alerts")
