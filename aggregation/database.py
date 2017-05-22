@@ -45,6 +45,8 @@ class DatabaseConnector:
                 settings = await self.settings.find().to_list(length=None)
                 if len(settings) > 0:
                     break
+                else:
+                    raise Exception()
             except:
                 traceback.print_exc()
                 print("Failed to load user settings from database (tries=%s)" % tries)
