@@ -880,9 +880,6 @@ class OrderAggregator:
                         accessor = self._aggregates_daily_sma12[_type][region]
 
                         sellPercentileSMA12 = accessor['sellPercentile']
-                        
-                        if _type == 44992:
-                            print(sellPercentileSMA12, self._aggregates_daily_sma12[_type][region])
 
                         if 'sellPercentileEMA12' in accessor and accessor['sellPercentileEMA12'] != 0 and accessor['sellPercentileEMA12'] != None:
                             sellPercentileEMA12 = accessor['sellPercentileEMA12']
