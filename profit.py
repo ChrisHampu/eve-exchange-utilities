@@ -25,7 +25,7 @@ settings = _settings.Settings()
 db = database.db
 cache = redis_interface.CacheInterface(OrderInterface())
 
-standard_headers = _settings.standard_headers
+standard_headers = settings.standard_headers
 
 # TODO: add error checking to every single request
 class ProfitAggregator:
