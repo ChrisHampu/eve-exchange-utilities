@@ -906,7 +906,6 @@ class OrderAggregator:
                 macdLine = sellPercentileEMA12 - sellPercentileEMA26
 
                 if _type in self._aggregates_daily_sma9 and smaCount >= 35:
-                if _type in self._aggregates_daily_sma9 and smaCount >= 0:
                     if region in self._aggregates_daily_sma9[_type]:
                         
                         accessor = self._aggregates_daily_sma9[_type][region]
