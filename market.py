@@ -706,6 +706,15 @@ class OrderAggregator:
             group['velocity'] = {'$first': '$regions.buyPercentile'}
             group['change'] = {'$last': '$regions.sellPercentile'}
 
+        if MACD == True:
+            needed_vars['regions.macdLine'] = 1
+            needed_vars['regions.macdLineEMA9'] = 1
+            needed_vars['regions.sellPercentile'] = 1
+            group['sellPercentile'] = {'$avg': '$regions.sellPercentile'}
+            group['macdLineSMA9'] = {'$avg': '$regions.macdLine'}
+            group['macdLineEMA9'] = {'$last': '$regions.macdLineEMA9'}
+            group['macdLineSMA9Values'] = {'$push': '$regions.macdLine'}
+
         pipeline = [
             {
                 '$match': {
@@ -731,6 +740,7 @@ class OrderAggregator:
             {
                 '$group': {
                     '_id': {"region": "$regions.region", "type": "$type"},
+                    'count': {"$sum": 1},
                     **group
                 }
             }
@@ -754,6 +764,7 @@ class OrderAggregator:
         # Pre-compute daily SMA values to use in daily aggregation that follows
 
         self._aggregates_daily_sma = {} # 7 days
+        self._aggregates_daily_sma9 = {} # 9 days
         self._aggregates_daily_sma12 = {} # 12 days
         self._aggregates_daily_sma26 = {} # 26 days
 
@@ -761,6 +772,7 @@ class OrderAggregator:
 
         await asyncio.gather(*[
             self.AggregateSMAPipeline(7, self._aggregates_daily_sma, SMA=True),
+            self.AggregateSMAPipeline(9, self._aggregates_daily_sma9, MACD=True),
             self.AggregateSMAPipeline(12, self._aggregates_daily_sma12, EMA=True),
             self.AggregateSMAPipeline(26, self._aggregates_daily_sma26, EMA=True)
         ])
@@ -798,6 +810,7 @@ class OrderAggregator:
         ]
 
         accumulator = {}
+        EMA9Multiplier = (2 / (9 + 1) )
         EMA12Multiplier = (2 / (12 + 1) )
         EMA26Multiplier = (2 / (26 + 1) )
 
@@ -813,6 +826,9 @@ class OrderAggregator:
             sellPercentileSMA26 = 0
             sellPercentileEMA12 = 0
             sellPercentileEMA26 = 0
+            macdLine = 0
+            signalLine = 0
+            smaCount = 0 # number of documents used in SMA calculation
 
             if _type in self._aggregates_daily_sma:
                 if region in self._aggregates_daily_sma[_type]:
@@ -820,32 +836,51 @@ class OrderAggregator:
                     volume_sma = self._aggregates_daily_sma[_type][region]['tradeVolume']
                     velocity = self._aggregates_daily_sma[_type][region]['velocity']
                     change = i['sellPercentile'] - self._aggregates_daily_sma[_type][region]['change']
-                    #sellPercentileSMA7 = self._aggregates_daily_sma[_type][region]['sellPercentile']
+                    smaCount = self._aggregates_daily_sma[_type][region]['count']
 
             gain = change if change > 0 else 0
             loss = abs(change) if change < 0 else 0
 
-            if _type in self._aggregates_daily_sma12:
-                if region in self._aggregates_daily_sma12[_type]:
+            # Require a minimum number of SMA values to begin calculating MACD
+            if smaCount >= 26:
+                if _type in self._aggregates_daily_sma12:
+                    if region in self._aggregates_daily_sma12[_type]:
 
-                    sellPercentileSMA12 = self._aggregates_daily_sma12[_type][region]['sellPercentile']
+                        sellPercentileSMA12 = self._aggregates_daily_sma12[_type][region]['sellPercentile']
 
-                    if 'sellPercentileEMA12' in self._aggregates_daily_sma12[_type][region]:
-                        sellPercentileEMA12 = self._aggregates_daily_sma12[_type][region]['sellPercentileEMA12']
+                        if 'sellPercentileEMA12' in self._aggregates_daily_sma12[_type][region]:
+                            sellPercentileEMA12 = self._aggregates_daily_sma12[_type][region]['sellPercentileEMA12']
+                            
+                if _type in self._aggregates_daily_sma26:
+                    if region in self._aggregates_daily_sma26[_type]:
+
+                        sellPercentileSMA26 = self._aggregates_daily_sma26[_type][region]['sellPercentile']
+
+                        if 'sellPercentileEMA26' in self._aggregates_daily_sma26[_type][region]:
+                            sellPercentileEMA26 = self._aggregates_daily_sma26[_type][region]['sellPercentileEMA26']
+
+                prevEMA12 = sellPercentileEMA12 if sellPercentileEMA12 != 0 and sellPercentileEMA12 != None else sellPercentileSMA12
+                prevEMA26 = sellPercentileEMA26 if sellPercentileEMA26 != 0 and sellPercentileEMA26 != None else sellPercentileSMA26
+
+                sellPercentileEMA12 = (i['sellPercentile'] - prevEMA12) * EMA12Multiplier + prevEMA12
+                sellPercentileEMA26 = (i['sellPercentile'] - prevEMA26) * EMA26Multiplier + prevEMA26
+
+                macdLine = sellPercentileEMA12 - sellPercentileEMA26
+
+                if _type in self._aggregates_daily_sma9:
+                    if region in self._aggregates_daily_sma9[_type]:
                         
-            if _type in self._aggregates_daily_sma26:
-                if region in self._aggregates_daily_sma26[_type]:
+                        accessor = self._aggregates_daily_sma9[_type][region]
 
-                    sellPercentileSMA26 = self._aggregates_daily_sma26[_type][region]['sellPercentile']
-
-                    if 'sellPercentileEMA26' in self._aggregates_daily_sma26[_type][region]:
-                        sellPercentileEMA26 = self._aggregates_daily_sma26[_type][region]['sellPercentileEMA26']
-
-            prevEMA12 = sellPercentileEMA12 if sellPercentileEMA12 != 0 and sellPercentileEMA12 != None else sellPercentileSMA12
-            prevEMA26 = sellPercentileEMA26 if sellPercentileEMA26 != 0 and sellPercentileEMA26 != None else sellPercentileSMA26
-
-            sellPercentileEMA12 = (i['sellPercentile'] - prevEMA12) * EMA12Multiplier + prevEMA12
-            sellPercentileEMA26 = (i['sellPercentile'] - prevEMA26) * EMA26Multiplier + prevEMA26
+                        # Need at least 9 days worth of macdLine gathering to calculate
+                        if (len(accessor['macdLineSMA9Values'])) > 8:
+                            
+                            prevEMA9 = accessor['macdLineEMA9'] if accessor['macdLineEMA9'] != 0 and accessor['macdLineEMA9'] != None else accessor['macdLineSMA9']
+                            
+                            signalLine = (macdLine - prevEMA9) * EMA9Multiplier + prevEMA9
+                        else:
+                            if _type == 42560 or _type == 44992:
+                                print('not enough data for macd: %s' % len(accessor['macdLineSMA9Values']))
 
             regionDoc = {
                 'region': region,
@@ -857,7 +892,9 @@ class OrderAggregator:
                 'loss': loss,
                 'sellPercentileEMA12': sellPercentileEMA12,
                 'sellPercentileEMA26': sellPercentileEMA26,
-                'macdLine': sellPercentileEMA12 - sellPercentileEMA26,
+                'macdLine': macdLine,
+                'signalLine': signalLine,
+                'macdHistogram': macdLine - signalLine if signalLine != 0 else 0,
                 **{key: value for key, value in i.items() if key not in {'_id'}}
             }
 
