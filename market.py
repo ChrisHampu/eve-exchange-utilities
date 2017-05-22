@@ -708,12 +708,17 @@ class OrderAggregator:
 
         if MACD == True:
             needed_vars['regions.macdLine'] = 1
-            needed_vars['regions.macdLineEMA9'] = 1
-            needed_vars['regions.sellPercentile'] = 1
-            group['sellPercentile'] = {'$avg': '$regions.sellPercentile'}
+            needed_vars['regions.signalLine'] = 1
             group['macdLineSMA9'] = {'$avg': '$regions.macdLine'}
-            group['macdLineEMA9'] = {'$last': '$regions.macdLineEMA9'}
+            group['macdLineEMA9'] = {'$last': '$regions.signalLine'}
             group['macdLineSMA9Values'] = {'$push': '$regions.macdLine'}
+
+        if RSI == True:
+            needed_vars['regions.gain'] = 1
+            needed_vars['regions.loss'] = 1
+            group['avgGain'] = {'$avg': '$regions.gain'}
+            group['avgLoss'] = {'$avg': '$regions.loss'}
+            group['rsiValues'] = {'$push': '$regions.gain'}
 
         pipeline = [
             {
@@ -748,6 +753,10 @@ class OrderAggregator:
 
         async for i in db.aggregates_daily.aggregate(pipeline, allowDiskUse=True):
             _type = i['_id']['type']
+
+            if 'region' not in i['_id']:
+                continue
+
             region = i['_id']['region']
 
             if _type not in accumulator:
@@ -763,10 +772,11 @@ class OrderAggregator:
 
         # Pre-compute daily SMA values to use in daily aggregation that follows
 
-        self._aggregates_daily_sma = {} # 7 days
-        self._aggregates_daily_sma9 = {} # 9 days
-        self._aggregates_daily_sma12 = {} # 12 days
-        self._aggregates_daily_sma26 = {} # 26 days
+        self._aggregates_daily_sma = {} # 7 days SMA
+        self._aggregates_daily_sma9 = {} # 9 days MACD
+        self._aggregates_daily_sma12 = {} # 12 days MACD
+        self._aggregates_daily_sma14 = {} # 14 days RSI
+        self._aggregates_daily_sma26 = {} # 26 days MACD
 
         print('Starting SMA pipeline aggregation')
 
@@ -774,6 +784,7 @@ class OrderAggregator:
             self.AggregateSMAPipeline(7, self._aggregates_daily_sma, SMA=True),
             self.AggregateSMAPipeline(9, self._aggregates_daily_sma9, MACD=True),
             self.AggregateSMAPipeline(12, self._aggregates_daily_sma12, EMA=True),
+            self.AggregateSMAPipeline(14, self._aggregates_daily_sma14, RSI=True),
             self.AggregateSMAPipeline(26, self._aggregates_daily_sma26, EMA=True)
         ])
         
@@ -816,6 +827,10 @@ class OrderAggregator:
 
         async for i in db.aggregates_hourly.aggregate(pipeline, allowDiskUse=True):
             _type = i['_id']['type']
+
+            if 'region' not in i['_id']:
+                continue
+
             region = i['_id']['region']
             spread_sma = 0
             volume_sma = 0
@@ -829,6 +844,7 @@ class OrderAggregator:
             macdLine = 0
             signalLine = 0
             smaCount = 0 # number of documents used in SMA calculation
+            RSI = 0
 
             if _type in self._aggregates_daily_sma:
                 if region in self._aggregates_daily_sma[_type]:
@@ -841,26 +857,48 @@ class OrderAggregator:
             gain = change if change > 0 else 0
             loss = abs(change) if change < 0 else 0
 
+            # RSI
+            if _type in self._aggregates_daily_sma14 and smaCount >= 14:
+                if region in self._aggregates_daily_sma14[_type]:
+                    accessor = self._aggregates_daily_sma14[_type][region]
+
+                    if len(accessor['rsiValues']) >= 14:
+                        
+                        RS = accessor['avgGain'] / accessor['avgLoss'] if accessor['avgLoss'] != 0 else 0
+                        if accessor['avgLoss'] == 0:
+                            RSI = 100
+                        elif accessor['avgGain'] == 0:
+                            RSI = 0
+                        else:
+                            RSI = 100 - (100 / (1 + RS))
+
             # Require a minimum number of SMA values to begin calculating MACD
             if smaCount >= 26:
                 if _type in self._aggregates_daily_sma12:
                     if region in self._aggregates_daily_sma12[_type]:
+                        
+                        accessor = self._aggregates_daily_sma12[_type][region]
 
-                        sellPercentileSMA12 = self._aggregates_daily_sma12[_type][region]['sellPercentile']
+                        sellPercentileSMA12 = accessor['sellPercentile']
+                        
+                        if _type == 44992:
+                            print(sellPercentileSMA12, self._aggregates_daily_sma12[_type][region])
 
-                        if 'sellPercentileEMA12' in self._aggregates_daily_sma12[_type][region]:
-                            sellPercentileEMA12 = self._aggregates_daily_sma12[_type][region]['sellPercentileEMA12']
+                        if 'sellPercentileEMA12' in accessor and accessor['sellPercentileEMA12'] != 0 and accessor['sellPercentileEMA12'] != None:
+                            sellPercentileEMA12 = accessor['sellPercentileEMA12']
                             
                 if _type in self._aggregates_daily_sma26:
                     if region in self._aggregates_daily_sma26[_type]:
+                        
+                        accessor = self._aggregates_daily_sma26[_type][region]
 
-                        sellPercentileSMA26 = self._aggregates_daily_sma26[_type][region]['sellPercentile']
+                        sellPercentileSMA26 = accessor['sellPercentile']
 
-                        if 'sellPercentileEMA26' in self._aggregates_daily_sma26[_type][region]:
-                            sellPercentileEMA26 = self._aggregates_daily_sma26[_type][region]['sellPercentileEMA26']
+                        if 'sellPercentileEMA26' in accessor and accessor['sellPercentileEMA26'] != 0 and accessor['sellPercentileEMA26'] != None:
+                            sellPercentileEMA26 = accessor['sellPercentileEMA26']
 
-                prevEMA12 = sellPercentileEMA12 if sellPercentileEMA12 != 0 and sellPercentileEMA12 != None else sellPercentileSMA12
-                prevEMA26 = sellPercentileEMA26 if sellPercentileEMA26 != 0 and sellPercentileEMA26 != None else sellPercentileSMA26
+                prevEMA12 = sellPercentileEMA12 if sellPercentileEMA12 != 0 else sellPercentileSMA12
+                prevEMA26 = sellPercentileEMA26 if sellPercentileEMA26 != 0 else sellPercentileSMA26
 
                 sellPercentileEMA12 = (i['sellPercentile'] - prevEMA12) * EMA12Multiplier + prevEMA12
                 sellPercentileEMA26 = (i['sellPercentile'] - prevEMA26) * EMA26Multiplier + prevEMA26
@@ -868,6 +906,7 @@ class OrderAggregator:
                 macdLine = sellPercentileEMA12 - sellPercentileEMA26
 
                 if _type in self._aggregates_daily_sma9 and smaCount >= 35:
+                if _type in self._aggregates_daily_sma9 and smaCount >= 0:
                     if region in self._aggregates_daily_sma9[_type]:
                         
                         accessor = self._aggregates_daily_sma9[_type][region]
@@ -878,9 +917,6 @@ class OrderAggregator:
                             prevEMA9 = accessor['macdLineEMA9'] if accessor['macdLineEMA9'] != 0 and accessor['macdLineEMA9'] != None else accessor['macdLineSMA9']
                             
                             signalLine = (macdLine - prevEMA9) * EMA9Multiplier + prevEMA9
-                        else:
-                            if _type == 42560 or _type == 44992:
-                                print('not enough data for macd: %s' % len(accessor['macdLineSMA9Values']))
 
             regionDoc = {
                 'region': region,
@@ -895,6 +931,7 @@ class OrderAggregator:
                 'macdLine': macdLine,
                 'signalLine': signalLine,
                 'macdHistogram': macdLine - signalLine if signalLine != 0 else 0,
+                'RSI': RSI,
                 **{key: value for key, value in i.items() if key not in {'_id'}}
             }
 
