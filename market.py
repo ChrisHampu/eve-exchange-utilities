@@ -679,18 +679,38 @@ class OrderAggregator:
 
         print("Hourly data finished in %s seconds" % (time.perf_counter() - agg_timer))
 
-    async def AggregateDaily(self) -> None:
+    async def AggregateSMAPipeline(self, days, accumulator, SMA=False, EMA=False, RSI=False, MACD=False):
 
-        agg_timer = time.perf_counter()
+        print("Aggregating %s day moving average (SMA=%s, EMA=%s, RSI=%s, MACD=%s)" % (days, str(SMA), str(EMA), str(RSI), str(MACD)))
 
-        print("Aggregating daily data")
+        needed_vars = {}
+        group = {}
 
-        # Pre-compute daily SMA values to use in daily aggregation that follows
+        if EMA == True:
+            needed_vars['regions.sellPercentileEMA12'] = 1
+            needed_vars['regions.sellPercentileEMA26'] = 1
+            needed_vars['regions.sellPercentile'] = 1
+            group['sellPercentile'] = {'$avg': '$regions.sellPercentile'}
+            group['sellPercentileEMA12'] = {'$last': '$regions.sellPercentileEMA12'}
+            group['sellPercentileEMA26'] = {'$last': '$regions.sellPercentileEMA26'}
+
+        if SMA == True:
+            needed_vars['regions.spread'] = 1
+            needed_vars['regions.tradeVolume'] = 1
+            needed_vars['regions.buyPercentile'] = 1
+            needed_vars['regions.sellPercentile'] = 1
+            group['spread'] = {'$avg': '$regions.spread'}
+            group['buyPercentile'] = {'$avg': '$regions.buyPercentile'}
+            group['sellPercentile'] = {'$avg': '$regions.sellPercentile'}
+            group['tradeVolume'] = {'$avg': '$regions.tradeVolume'}
+            group['velocity'] = {'$first': '$regions.buyPercentile'}
+            group['change'] = {'$last': '$regions.sellPercentile'}
+
         pipeline = [
             {
                 '$match': {
                     'time': {
-                        '$gte': settings.utcnow - timedelta(days=7, minutes=2) # 1 day + slight buffer
+                        '$gte': settings.utcnow - timedelta(days=days, minutes=2) # 1 day + slight buffer
                     }
                 }
             },
@@ -699,9 +719,7 @@ class OrderAggregator:
                     'type': 1,
                     'time': 1,
                     'regions.region': 1,
-                    'regions.spread': 1,
-                    'regions.tradeVolume': 1,
-                    'regions.buyPercentile': 1
+                    **needed_vars
                 },
             },
             {
@@ -713,23 +731,41 @@ class OrderAggregator:
             {
                 '$group': {
                     '_id': {"region": "$regions.region", "type": "$type"},
-                    'spread': {'$avg': '$regions.spread'},
-                    'tradeVolume': {'$avg': '$regions.tradeVolume'},
-                    'velocity': {'$first': '$regions.buyPercentile'}
+                    **group
                 }
             }
         ]
-
-        self._aggregates_daily_sma = {}
 
         async for i in db.aggregates_daily.aggregate(pipeline, allowDiskUse=True):
             _type = i['_id']['type']
             region = i['_id']['region']
 
-            if _type not in self._aggregates_daily_sma:
-                self._aggregates_daily_sma[_type] = {}
+            if _type not in accumulator:
+                accumulator[_type] = {}
 
-            self._aggregates_daily_sma[_type][region] = {key: value for key, value in i.items() if key not in {'_id'}}
+            accumulator[_type][region] = {key: value for key, value in i.items() if key not in {'_id'}}
+
+    async def AggregateDaily(self) -> None:
+
+        agg_timer = time.perf_counter()
+
+        print("Aggregating daily data")
+
+        # Pre-compute daily SMA values to use in daily aggregation that follows
+
+        self._aggregates_daily_sma = {} # 7 days
+        self._aggregates_daily_sma12 = {} # 12 days
+        self._aggregates_daily_sma26 = {} # 26 days
+
+        print('Starting SMA pipeline aggregation')
+
+        await asyncio.gather(*[
+            self.AggregateSMAPipeline(7, self._aggregates_daily_sma, SMA=True),
+            self.AggregateSMAPipeline(12, self._aggregates_daily_sma12, EMA=True),
+            self.AggregateSMAPipeline(26, self._aggregates_daily_sma26, EMA=True)
+        ])
+        
+        print("Finished SMA pipeline aggregation in %s seconds" % (time.perf_counter() - agg_timer))
 
         pipeline = [
             {
@@ -762,6 +798,8 @@ class OrderAggregator:
         ]
 
         accumulator = {}
+        EMA12Multiplier = (2 / (12 + 1) )
+        EMA26Multiplier = (2 / (26 + 1) )
 
         async for i in db.aggregates_hourly.aggregate(pipeline, allowDiskUse=True):
             _type = i['_id']['type']
@@ -769,38 +807,70 @@ class OrderAggregator:
             spread_sma = 0
             volume_sma = 0
             velocity = 0
+            change = 0
+            #sellPercentileSMA7 = 0
+            sellPercentileSMA12 = 0
+            sellPercentileSMA26 = 0
+            sellPercentileEMA12 = 0
+            sellPercentileEMA26 = 0
 
             if _type in self._aggregates_daily_sma:
                 if region in self._aggregates_daily_sma[_type]:
                     spread_sma = self._aggregates_daily_sma[_type][region]['spread']
                     volume_sma = self._aggregates_daily_sma[_type][region]['tradeVolume']
                     velocity = self._aggregates_daily_sma[_type][region]['velocity']
+                    change = i['sellPercentile'] - self._aggregates_daily_sma[_type][region]['change']
+                    #sellPercentileSMA7 = self._aggregates_daily_sma[_type][region]['sellPercentile']
+
+            gain = change if change > 0 else 0
+            loss = abs(change) if change < 0 else 0
+
+            if _type in self._aggregates_daily_sma12:
+                if region in self._aggregates_daily_sma12[_type]:
+
+                    sellPercentileSMA12 = self._aggregates_daily_sma12[_type][region]['sellPercentile']
+
+                    if 'sellPercentileEMA12' in self._aggregates_daily_sma12[_type][region]:
+                        sellPercentileEMA12 = self._aggregates_daily_sma12[_type][region]['sellPercentileEMA12']
+                        
+            if _type in self._aggregates_daily_sma26:
+                if region in self._aggregates_daily_sma26[_type]:
+
+                    sellPercentileSMA26 = self._aggregates_daily_sma26[_type][region]['sellPercentile']
+
+                    if 'sellPercentileEMA26' in self._aggregates_daily_sma26[_type][region]:
+                        sellPercentileEMA26 = self._aggregates_daily_sma26[_type][region]['sellPercentileEMA26']
+
+            prevEMA12 = sellPercentileEMA12 if sellPercentileEMA12 != 0 and sellPercentileEMA12 != None else sellPercentileSMA12
+            prevEMA26 = sellPercentileEMA26 if sellPercentileEMA26 != 0 and sellPercentileEMA26 != None else sellPercentileSMA26
+
+            sellPercentileEMA12 = (i['sellPercentile'] - prevEMA12) * EMA12Multiplier + prevEMA12
+            sellPercentileEMA26 = (i['sellPercentile'] - prevEMA26) * EMA26Multiplier + prevEMA26
+
+            regionDoc = {
+                'region': region,
+                'spread_sma': spread_sma,
+                'volume_sma': volume_sma,
+                'velocity': (i['buyPercentile'] - velocity) if velocity is not 0 else 0,
+                'change': change,
+                'gain': gain,
+                'loss': loss,
+                'sellPercentileEMA12': sellPercentileEMA12,
+                'sellPercentileEMA26': sellPercentileEMA26,
+                'macdLine': sellPercentileEMA12 - sellPercentileEMA26,
+                **{key: value for key, value in i.items() if key not in {'_id'}}
+            }
 
             if _type not in accumulator:
                 accumulator[_type] = {
                     'time': settings.utcnow,
                     'type': _type,
                     'regions': [
-                        {
-                            'region': region,
-                            'spread_sma': spread_sma,
-                            'volume_sma': volume_sma,
-                            'velocity': (i['buyPercentile'] - velocity) if velocity is not 0 else 0,
-                            **{key: value for key, value in i.items() if key not in {'_id'}}
-
-                        }
+                        regionDoc
                     ]
                 }
             else:
-                accumulator[_type]['regions'].append(
-                    {
-                        'region': i['_id']['region'],
-                        'spread_sma': spread_sma,
-                        'volume_sma': volume_sma,
-                        'velocity': (i['buyPercentile'] - velocity) if velocity is not 0 else 0,
-                        **{key: value for key, value in i.items() if key not in {'_id'}}
-                    }
-                )
+                accumulator[_type]['regions'].append(regionDoc)
 
         self._aggregates_daily = list(accumulator.values())
 
