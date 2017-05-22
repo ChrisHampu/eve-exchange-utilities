@@ -34,8 +34,10 @@ class DatabaseConnector:
 
         self.settings_cache = {}
 
+        settings = await self.settings.find().to_list(length=None)
+
         # Build a user id -> settings document map for easy access on demand
-        async for user in self.settings.find():
+        for user in settings:
 
             # Sanity check
             if 'user_id' not in user:
