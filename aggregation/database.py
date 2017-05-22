@@ -6,7 +6,7 @@ import time
 class DatabaseConnector:
     def __init__(self):
         self.client = motor_asyncio.AsyncIOMotorClient()
-        self.database = self.client.test
+        self.database = self.client.eveexchange
         self.market_orders = self.database.orders
         self.aggregates_minutes = self.database.aggregates_minutes
         self.aggregates_hourly = self.database.aggregates_hourly
