@@ -56,9 +56,12 @@ class CacheInterface:
             db.aggregates_hourly.remove({'time': {'$lte': settings.hourly_data_prune_time}})
         ])
 
-        for order in self.orderInterface._deleted_orders:
+        if self.orderInterface._deleted_orders == None:
+            print("Failed to purge stale market data from redis: No orders to delete")
+        else:
+            for order in self.orderInterface._deleted_orders:
 
-            self._redis.delete('ord:%s' % order)
+                self._redis.delete('ord:%s' % order)
 
         print("Stale market data purged in %s seconds" % (time.perf_counter() - purgeTimer))
 
