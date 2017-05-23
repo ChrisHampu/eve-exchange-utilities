@@ -213,7 +213,7 @@ class AlertInterface:
     async def check_sales_alerts(self, user_id, changed_orders):
 
         for alert in await db.alerts.find({
-            'nextTrigger': {'$lt': config.utcnow},
+            #'nextTrigger': {'$lt': config.utcnow},
             'alertType': 1,
             'paused': False,
             'user_id': user_id
@@ -236,20 +236,20 @@ class AlertInterface:
             for order in valid_orders:
                 price = locale.format("%.2f", order['price'], grouping=True)
                 changePrice = locale.format("%.2f", order['price'] * order['change'], grouping=True)
-                
+
                 if salesType == 0:
-                    if order['bid'] == False:
+                    if order['bid'] == False or order['completed'] == True:
                         continue
                     msg = "Sales alert: %s purchased %s %s with %s remaining at %s each totalling %s ISK." % (order['whoName'], order['change'], market_id_to_name[str(order['typeID'])], order['remaining'], price, changePrice)
                 elif salesType == 1:
-                    if order['bid'] == True:
+                    if order['bid'] == True or order['completed'] == True:
                         continue
                     msg = "Sales alert: %s sold %s %s with %s remaining at %s each totalling %s ISK." % (order['whoName'], order['change'], market_id_to_name[str(order['typeID'])], order['remaining'], price, changePrice)  
                 elif salesType == 2:
                     if order['completed'] == False:
                         continue
                     totalPrice = locale.format("%.2f", order['price'], grouping=True)
-                    msg = "Sales alert: %s completed an order for %s %s totalling %s ISK" % (order['whoName'], order['volEntered'], market_id_to_name[str(order['typeID']), totalPrice])
+                    msg = "Sales alert: %s completed an order for %s %s totalling %s ISK" % (order['whoName'], order['volEntered'], market_id_to_name[str(order['typeID'])], totalPrice)
 
                 queued_messages.append(msg)
 

@@ -11,7 +11,7 @@ import traceback
 from bson.objectid import ObjectId
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
-from aggregation import settings as _settings, database, redis_interface
+from aggregation import settings as _settings, database, redis_interface, alert_interface
 from market import OrderInterface
 
 try:
@@ -24,6 +24,7 @@ publish_url = 'localhost:4501'
 settings = _settings.Settings()
 db = database.db
 cache = redis_interface.CacheInterface(OrderInterface())
+alerts = alert_interface.AlertInterface()
 
 standard_headers = settings.standard_headers
 
@@ -437,7 +438,7 @@ class ProfitAggregator:
             if tree.find('error') is not None:
                 print(tree.find('error').text)
                 print("Error while pulling character orders for user %s" % user_id)
-                return
+                return []
 
             rows = [row for row in list(tree.find('result').find('rowset')) if row.attrib['orderState'] == '0']
 
@@ -448,9 +449,40 @@ class ProfitAggregator:
                    **{'user_id': user_id, 'who': entity_name, 'whoID': char_id}} for row in rows]
 
         if len(orders) == 0:
-            return
+            return []
 
         await db.user_orders.insert(orders)
+
+        return orders
+
+    async def getCharacterOrderById(self, order_id, user_id, char_id, entity_name, eve_key, eve_vcode):
+
+        auth = (char_id, eve_key, eve_vcode, order_id)
+        url = "https://api.eveonline.com/char/MarketOrders.xml.aspx?characterID=%s&keyID=%s&vCode=%s&orderID=%s" % auth
+
+        rows = []
+
+        try:
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2, headers=standard_headers))
+
+            tree = ET.fromstring(req.text)
+
+            if tree.find('error') is not None:
+                print("Error while pulling character orders for user %s and order %s: %s" % (user_id, order_id, tree.find('error').text))
+                return []
+
+            rows = [row for row in list(tree.find('result').find('rowset'))]
+
+        except:
+            pass
+
+        orders = [{**{k:row.attrib[k] for k in ('orderID', 'orderState', 'volRemaining', 'issued', 'minVolume', 'stationID', 'volEntered', 'typeID', 'bid', 'price')},
+                   **{'user_id': user_id, 'who': entity_name, 'whoID': char_id}} for row in rows]
+
+        if len(orders) == 0:
+            return []
+
+        return orders
 
     def findAssetChildren(self, asset, entity_info):
 
@@ -552,7 +584,7 @@ class ProfitAggregator:
             if tree.find('error') is not None:
                 print(tree.find('error').text)
                 print("Error while pulling corporation orders for user %s" % user_id)
-                return
+                return []
 
             rows = [row for row in list(tree.find('result').find('rowset')) if row.attrib['orderState'] == '0']
 
@@ -564,12 +596,49 @@ class ProfitAggregator:
                   for row in rows if row.attrib['accountKey'] == str(wallet_key)]
 
         if len(orders) == 0:
-            return
+            return []
 
         await db.user_orders.insert(orders)
 
+        return orders
+
+    async def getCorporationOrderById(self, order_id, user_id, wallet_key, entity_id, entity_name, eve_key, eve_vcode):
+
+        auth = (eve_key, eve_vcode, order_id)
+        url = "https://api.eveonline.com/corp/MarketOrders.xml.aspx?keyID=%s&vCode=%s&orderID=%s" % auth
+
+        rows = []
+
+        try:
+            req = await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.get, url, timeout=2, headers=standard_headers))
+
+            tree = ET.fromstring(req.text)
+
+            if tree.find('error') is not None:
+                print("Error while pulling corporation orders for user %s and order %s: %s" % (user_id, order_id, tree.find('error').text))
+                return []
+
+            rows = [row for row in list(tree.find('result').find('rowset'))]
+
+        except:
+            pass
+
+        orders = [{**{k:row.attrib[k] for k in ('orderID', 'orderState', 'volRemaining', 'issued', 'minVolume', 'stationID', 'volEntered', 'typeID', 'bid', 'price')},
+                   **{'user_id': user_id, 'who': entity_name, 'whoID': entity_id}}
+                  for row in rows if row.attrib['accountKey'] == str(wallet_key)]
+
+        if len(orders) == 0:
+            return []
+
+        return orders
+
     async def clearUserOrders(self, user_id):
+
+        old_orders = await db.user_orders.find({'user_id': user_id}).to_list(length=None)
+
         await db.user_orders.remove({'user_id': user_id})
+
+        return old_orders
 
     async def getCorporationBalance(self, user_id, wallet_key, eve_key, eve_vcode):
 
@@ -702,8 +771,7 @@ class ProfitAggregator:
                 if int(entity.attrib['corporationID']) != corp_id:
                     print("Updating corporation for user %s (key: %s, vcode: %s, corp: %s) to: %s " % (char_id, eve_key, eve_vcode, corp_id, entity.attrib['corporationName']))
 
-                    await db.settings.find_and_modify(
-                    {
+                    await db.settings.find_and_modify({
                         'user_id': user_id,
                         'profiles': {
                             '$elemMatch': {
@@ -711,8 +779,7 @@ class ProfitAggregator:
                                 'vcode': eve_vcode
                             }
                         }
-                    },
-                    {
+                    }, {
                         '$set': {
                             'profiles.$.corporation_id': int(entity.attrib['corporationID']),
                             'profiles.$.corporation_name': entity.attrib['corporationName']
@@ -741,8 +808,7 @@ class ProfitAggregator:
                 })
 
         else:
-            await db.settings.find_and_modify(
-            {
+            await db.settings.find_and_modify({
                 'user_id': user_id,
                 'profiles': {
                     '$elemMatch': {
@@ -750,14 +816,94 @@ class ProfitAggregator:
                         'vcode': eve_vcode
                     }
                 }
-            },
-            {
+            }, {
                 '$set': {
                     'profiles.$.error': None
                 }
             })
 
         return verified
+
+    async def checkUserOrders(self, old_orders, _type, user_id, entity_id, entity_name, eve_key, vcode, wallet_key = 0):
+
+        changed_orders = []
+
+        try:
+            if _type == 0:
+                new_orders = await self.loadCharacterOrders(user_id, entity_id, entity_name, eve_key, vcode)
+
+            else:
+                new_orders = await self.loadCorporationOrders(user_id, wallet_key, entity_id, entity_name, eve_key, vcode)
+        except:
+            print("Failed to load orders during check for user %s (entity: %s, key: %s, vcode: %s)" % (user_id, entity_id, eve_key, vcode))
+            return changed_orders
+
+        old_ids = {x['orderID'] for x in old_orders if x['whoID'] == entity_id}
+        new_ids = {x['orderID'] for x in new_orders if x['whoID'] == entity_id}
+
+        intersected = list(old_ids.intersection(new_ids))
+        difference = list(old_ids.difference(new_ids))
+
+        for id in intersected:
+            new_order = next((x for x in new_orders if x['orderID'] == id), None)
+            old_order = next((x for x in old_orders if x['orderID'] == id), None)
+
+            if new_order == None or old_order == None:
+                continue
+
+            oldVolRem = int(old_order['volRemaining'])
+            newVolRem = int(new_order['volRemaining'])
+
+            if newVolRem < oldVolRem:
+
+                changed_orders.append({
+                    'change': oldVolRem - newVolRem,
+                    'orderID': id,
+                    'whoID': entity_id,
+                    'whoName': entity_name,
+                    'previous': oldVolRem,
+                    'remaining': newVolRem,
+                    'bid': int(old_order['bid']) == 1,
+                    'completed': False,
+                    'typeID': new_order['typeID'],
+                    'volEntered': int(new_order['volEntered']),
+                    'price': float(old_order['price'])
+                })
+
+                #print('order partially fulfilled: %s; %s -> %s' % (id, oldVolRem, newVolRem))
+
+        for id in difference:
+            old_order = next((x for x in old_orders if x['orderID'] == id), None)
+
+            oldVolRem = int(old_order['volRemaining'])
+
+            if _type == 0:
+                order = await self.getCharacterOrderById(old_order['orderID'], user_id, entity_id, entity_name, eve_key, vcode)
+            else:
+                order = await self.getCorporationOrderById(old_order['orderID'], user_id, wallet_key, entity_id, entity_name, eve_key, vcode)
+
+            if len(order) != 0:
+                order = order[0]
+            else:
+                order = None
+
+            if order != None and order['orderState'] == '2':
+
+                changed_orders.append({
+                    'change': oldVolRem,
+                    'orderID': id,
+                    'whoID': entity_id,
+                    'whoName': entity_name,
+                    'previous': oldVolRem,
+                    'remaining': 0,
+                    'bid': int(old_order['bid']) == 1,
+                    'completed': True,
+                    'typeID': old_order['typeID'],
+                    'volEntered': int(old_order['volEntered']),
+                    'price': float(old_order['price'])
+                })
+
+        return changed_orders
 
     async def aggregateProfit(self):
 
@@ -782,7 +928,9 @@ class ProfitAggregator:
                 'user_id': user_id
             }
 
-            await self.clearUserOrders(user_id)
+            old_orders = await self.clearUserOrders(user_id)
+            changed_orders = []
+
             await db.user_assets.remove({'user_id': user_id})
 
             for profile in user.get('profiles', []):
@@ -826,6 +974,10 @@ class ProfitAggregator:
                     wallet_balance = await self.getCorporationBalance(user_id, wallet_key, eve_key, vcode)
 
                 await self.updateWalletBalance(user_id, profile['id'], wallet_balance)
+
+                changed_orders.extend(await self.checkUserOrders(old_orders, _type, user_id, char_id if _type == 0 else corp_id, entity_name, eve_key, vcode))
+
+            await alerts.check_sales_alerts(user_id, changed_orders)
 
             transactions.extend(await self.updateTopItems(user_id))
 
