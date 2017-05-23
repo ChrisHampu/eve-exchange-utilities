@@ -213,7 +213,7 @@ class AlertInterface:
     async def check_sales_alerts(self, user_id, changed_orders):
 
         for alert in await db.alerts.find({
-            #'nextTrigger': {'$lt': config.utcnow},
+            'nextTrigger': {'$lt': config.utcnow},
             'alertType': 1,
             'paused': False,
             'user_id': user_id
