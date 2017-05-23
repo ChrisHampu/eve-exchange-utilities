@@ -34,6 +34,9 @@ class AlertInterface:
 
     async def trigger_alert(self, alert, message):
 
+        if self.user_settings is None:
+            self.user_settings = await db.GetAllUserSettings()
+
         alert_settings = self.get_user_alert_settings(alert['user_id'])
 
         if alert_settings == None:
@@ -45,29 +48,51 @@ class AlertInterface:
             send_evemail = alert_settings.get('canSendMailNotification', True)
 
             if show_browser == True:
-                msg_doc = {
-                    'user_id': alert['user_id'],
-                    'message': message
-                }
+                
+                if isinstance(message, list) == True:
 
-                await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
-                                                                                        'http://' + publish_url + '/publish/alert',
-                                                                                        timeout=5, json=msg_doc))
+                    for msg in message:
+
+                        msg_doc = {
+                            'user_id': alert['user_id'],
+                            'message': msg
+                        }
+
+                        await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
+                                                                                                'http://' + publish_url + '/publish/alert',
+                                                                                                timeout=5, json=msg_doc))
+
+                else:
+                    msg_doc = {
+                        'user_id': alert['user_id'],
+                        'message': message
+                    }
+
+                    await asyncio.get_event_loop().run_in_executor(None, functools.partial(requests.post,
+                                                                                            'http://' + publish_url + '/publish/alert',
+                                                                                            timeout=5, json=msg_doc))
 
             if send_evemail == True:
                 if alert['alertType'] == 0:
                     subject = 'Price Alert - EVE Exchange'
+                elif alert['alertType'] == 1:
+                    subject = 'Sales Alert - EVE Exchange'
                 else:
                     subject = 'Alert - EVE Exchange'
 
-                mailer.queueMail(alert['user_id'], subject, message)
+                if isinstance(message, list) == True:
+                    msg = "<br><br>".join(message)
+                else:
+                    msg = message
 
-                db.alerts.find_and_modify({'user_id': alert['user_id'], '_id': alert['_id']}, {
-                    '$set': {
-                        'nextTrigger': config.utcnow + timedelta(hours=alert['frequency']),
-                        'lastTrigger': config.utcnow
-                    }
-                })
+                mailer.queueMail(alert['user_id'], subject, msg)
+
+            db.alerts.find_and_modify({'user_id': alert['user_id'], '_id': alert['_id']}, {
+                '$set': {
+                    'nextTrigger': config.utcnow + timedelta(hours=alert['frequency']),
+                    'lastTrigger': config.utcnow
+                }
+            })
 
             self.log_alert(alert, message)
 
@@ -117,11 +142,8 @@ class AlertInterface:
     async def check_price_alerts(self, minute_docs):
         print("Checking price alerts")
 
-        try:
+        if self.user_settings is None:
             self.user_settings = await db.GetAllUserSettings()
-        except:
-            print("Failed to load all user settings")
-            return
 
         for alert in await db.alerts.find({
             'nextTrigger': {'$lt': config.utcnow},
@@ -187,4 +209,45 @@ class AlertInterface:
                 msg = "Price alert: %s has a %s of %s which %s your alert set at %s" % (market_id_to_name[str(item_id)], key_name, regional, comparator_verb, amount)
 
                 await self.trigger_alert(alert, msg)
-            
+
+    async def check_sales_alerts(self, user_id, changed_orders):
+
+        for alert in await db.alerts.find({
+            'nextTrigger': {'$lt': config.utcnow},
+            'alertType': 1,
+            'paused': False,
+            'user_id': user_id
+        }).to_list(length=None):
+
+            salesType = alert['salesAlertType']
+            alertProfile = alert['salesAlertProfile']
+
+            valid_orders = []
+
+            if alertProfile != 0:
+                for order in changed_orders:
+                    if order['whoID'] == alertProfile:
+                        valid_orders.append(order)
+            else:
+                valid_orders = changed_orders
+
+            queued_messages = []
+
+            for order in valid_orders:
+                if salesType == 0:
+                    if order['bid'] == False:
+                        continue
+                    msg = "Sales alert: %s purchased %s %s with %s remaining." % (order['whoName'], order['change'], market_id_to_name[str(order['typeID'])], order['remaining'])
+                elif salesType == 1:
+                    if order['bid'] == True:
+                        continue
+                    msg = "Sales alert: %s sold %s %s with %s remaining." % (order['whoName'], order['change'], market_id_to_name[str(order['typeID'])], order['remaining'])  
+                elif salesType == 2:
+                    if order['completed'] == False:
+                        continue
+                    msg = "Sales alert: %s completed an order for %s %s" % (order['whoName'], order['volEntered'], market_id_to_name[str(order['typeID'])])
+
+                queued_messages.append(msg)
+
+            if len(queued_messages) > 0:
+                await self.trigger_alert(alert, queued_messages)
