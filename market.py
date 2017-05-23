@@ -699,26 +699,26 @@ class OrderAggregator:
             needed_vars['regions.tradeVolume'] = 1
             needed_vars['regions.buyPercentile'] = 1
             needed_vars['regions.sellPercentile'] = 1
+            needed_vars['regions.daysCalculated'] = 1
             group['spread'] = {'$avg': '$regions.spread'}
             group['buyPercentile'] = {'$avg': '$regions.buyPercentile'}
             group['sellPercentile'] = {'$avg': '$regions.sellPercentile'}
             group['tradeVolume'] = {'$avg': '$regions.tradeVolume'}
             group['velocity'] = {'$first': '$regions.buyPercentile'}
             group['change'] = {'$last': '$regions.sellPercentile'}
+            group['daysCalculated'] = {'$last': '$regions.daysCalculated'}
 
         if MACD == True:
             needed_vars['regions.macdLine'] = 1
             needed_vars['regions.signalLine'] = 1
             group['macdLineSMA9'] = {'$avg': '$regions.macdLine'}
             group['macdLineEMA9'] = {'$last': '$regions.signalLine'}
-            group['macdLineSMA9Values'] = {'$push': '$regions.macdLine'}
 
         if RSI == True:
             needed_vars['regions.gain'] = 1
             needed_vars['regions.loss'] = 1
             group['avgGain'] = {'$avg': '$regions.gain'}
             group['avgLoss'] = {'$avg': '$regions.loss'}
-            group['rsiValues'] = {'$push': '$regions.gain'}
 
         pipeline = [
             {
@@ -745,7 +745,6 @@ class OrderAggregator:
             {
                 '$group': {
                     '_id': {"region": "$regions.region", "type": "$type"},
-                    'count': {"$sum": 1},
                     **group
                 }
             }
@@ -804,8 +803,8 @@ class OrderAggregator:
             {
                 '$group': {
                     '_id': {"region": "$regions.region", "type": "$type"},
-                    'buyPercentile': {'$avg': '$regions.buyPercentile'},
-                    'sellPercentile': {'$avg': '$regions.sellPercentile'},
+                    'buyPercentile': {'$last': '$regions.buyPercentile'},
+                    'sellPercentile': {'$last': '$regions.sellPercentile'},
                     'buyAvg': {'$avg': '$regions.buyAvg'},
                     'sellAvg': {'$avg': '$regions.sellAvg'},
                     'buyMax': {'$max': '$regions.buyMax'},
@@ -843,8 +842,8 @@ class OrderAggregator:
             sellPercentileEMA26 = 0
             macdLine = 0
             signalLine = 0
-            smaCount = 0 # number of documents used in SMA calculation
             RSI = 0
+            daysCalculated = 0
 
             if _type in self._aggregates_daily_sma:
                 if region in self._aggregates_daily_sma[_type]:
@@ -852,47 +851,50 @@ class OrderAggregator:
                     volume_sma = self._aggregates_daily_sma[_type][region]['tradeVolume']
                     velocity = self._aggregates_daily_sma[_type][region]['velocity']
                     change = i['sellPercentile'] - self._aggregates_daily_sma[_type][region]['change']
-                    smaCount = self._aggregates_daily_sma[_type][region]['count']
+                    daysCalculated = self._aggregates_daily_sma[_type][region]['daysCalculated']
+
+                    if daysCalculated == None:
+                        daysCalculated = 0
 
             gain = change if change > 0 else 0
             loss = abs(change) if change < 0 else 0
 
+            calcRSI = daysCalculated >= 14
+            calcEMA = daysCalculated >= 26
+            calcEMASignal = daysCalculated >= 35
+            
             # RSI
-            if _type in self._aggregates_daily_sma14 and smaCount >= 14:
+            if _type in self._aggregates_daily_sma14 and calcRSI == True:
                 if region in self._aggregates_daily_sma14[_type]:
                     accessor = self._aggregates_daily_sma14[_type][region]
-
-                    if len(accessor['rsiValues']) >= 14:
                         
-                        RS = accessor['avgGain'] / accessor['avgLoss'] if accessor['avgLoss'] != 0 else 0
-                        if accessor['avgLoss'] == 0:
-                            RSI = 100
-                        elif accessor['avgGain'] == 0:
-                            RSI = 0
-                        else:
-                            RSI = 100 - (100 / (1 + RS))
+                    RS = accessor['avgGain'] / accessor['avgLoss'] if accessor['avgLoss'] != 0 else 0
+                    if accessor['avgLoss'] == 0:
+                        RSI = 100
+                    elif accessor['avgGain'] == 0:
+                        RSI = 0
+                    else:
+                        RSI = 100 - (100 / (1 + RS))
 
-            # Require a minimum number of SMA values to begin calculating MACD
-            if smaCount >= 26:
-                if _type in self._aggregates_daily_sma12:
-                    if region in self._aggregates_daily_sma12[_type]:
-                        
-                        accessor = self._aggregates_daily_sma12[_type][region]
+            if _type in self._aggregates_daily_sma26 and _type in self._aggregates_daily_sma12 and calcEMA == True:
+                
+                if region in self._aggregates_daily_sma12[_type]:
+                    
+                    accessor = self._aggregates_daily_sma12[_type][region]
 
-                        sellPercentileSMA12 = accessor['sellPercentile']
+                    sellPercentileSMA12 = accessor['sellPercentile']
 
-                        if 'sellPercentileEMA12' in accessor and accessor['sellPercentileEMA12'] != 0 and accessor['sellPercentileEMA12'] != None:
-                            sellPercentileEMA12 = accessor['sellPercentileEMA12']
-                            
-                if _type in self._aggregates_daily_sma26:
-                    if region in self._aggregates_daily_sma26[_type]:
-                        
-                        accessor = self._aggregates_daily_sma26[_type][region]
+                    if 'sellPercentileEMA12' in accessor and accessor['sellPercentileEMA12'] != 0 and accessor['sellPercentileEMA12'] != None:
+                        sellPercentileEMA12 = accessor['sellPercentileEMA12']                
 
-                        sellPercentileSMA26 = accessor['sellPercentile']
+                if region in self._aggregates_daily_sma26[_type]:
+                    
+                    accessor = self._aggregates_daily_sma26[_type][region]
 
-                        if 'sellPercentileEMA26' in accessor and accessor['sellPercentileEMA26'] != 0 and accessor['sellPercentileEMA26'] != None:
-                            sellPercentileEMA26 = accessor['sellPercentileEMA26']
+                    sellPercentileSMA26 = accessor['sellPercentile']
+
+                    if 'sellPercentileEMA26' in accessor and accessor['sellPercentileEMA26'] != 0 and accessor['sellPercentileEMA26'] != None:
+                        sellPercentileEMA26 = accessor['sellPercentileEMA26']
 
                 prevEMA12 = sellPercentileEMA12 if sellPercentileEMA12 != 0 else sellPercentileSMA12
                 prevEMA26 = sellPercentileEMA26 if sellPercentileEMA26 != 0 else sellPercentileSMA26
@@ -902,17 +904,14 @@ class OrderAggregator:
 
                 macdLine = sellPercentileEMA12 - sellPercentileEMA26
 
-                if _type in self._aggregates_daily_sma9 and smaCount >= 35:
+                if _type in self._aggregates_daily_sma9 and calcEMASignal == True:
                     if region in self._aggregates_daily_sma9[_type]:
                         
                         accessor = self._aggregates_daily_sma9[_type][region]
 
-                        # Need at least 9 days worth of macdLine gathering to calculate
-                        if (len(accessor['macdLineSMA9Values'])) > 8:
-                            
-                            prevEMA9 = accessor['macdLineEMA9'] if accessor['macdLineEMA9'] != 0 and accessor['macdLineEMA9'] != None else accessor['macdLineSMA9']
-                            
-                            signalLine = (macdLine - prevEMA9) * EMA9Multiplier + prevEMA9
+                        prevEMA9 = accessor['macdLineEMA9'] if accessor['macdLineEMA9'] != 0 and accessor['macdLineEMA9'] != None else accessor['macdLineSMA9']
+                        
+                        signalLine = (macdLine - prevEMA9) * EMA9Multiplier + prevEMA9
 
             regionDoc = {
                 'region': region,
@@ -928,6 +927,7 @@ class OrderAggregator:
                 'signalLine': signalLine,
                 'macdHistogram': macdLine - signalLine if signalLine != 0 else 0,
                 'RSI': RSI,
+                'daysCalculated': daysCalculated + 1,
                 **{key: value for key, value in i.items() if key not in {'_id'}}
             }
 
