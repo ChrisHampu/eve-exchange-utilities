@@ -234,18 +234,22 @@ class AlertInterface:
             queued_messages = []
 
             for order in valid_orders:
+                price = locale.format("%.2f", order['price'], grouping=True)
+                changePrice = locale.format("%.2f", order['price'] * order['change'], grouping=True)
+                
                 if salesType == 0:
                     if order['bid'] == False:
                         continue
-                    msg = "Sales alert: %s purchased %s %s with %s remaining." % (order['whoName'], order['change'], market_id_to_name[str(order['typeID'])], order['remaining'])
+                    msg = "Sales alert: %s purchased %s %s with %s remaining at %s each totalling %s ISK." % (order['whoName'], order['change'], market_id_to_name[str(order['typeID'])], order['remaining'], price, changePrice)
                 elif salesType == 1:
                     if order['bid'] == True:
                         continue
-                    msg = "Sales alert: %s sold %s %s with %s remaining." % (order['whoName'], order['change'], market_id_to_name[str(order['typeID'])], order['remaining'])  
+                    msg = "Sales alert: %s sold %s %s with %s remaining at %s each totalling %s ISK." % (order['whoName'], order['change'], market_id_to_name[str(order['typeID'])], order['remaining'], price, changePrice)  
                 elif salesType == 2:
                     if order['completed'] == False:
                         continue
-                    msg = "Sales alert: %s completed an order for %s %s" % (order['whoName'], order['volEntered'], market_id_to_name[str(order['typeID'])])
+                    totalPrice = locale.format("%.2f", order['price'], grouping=True)
+                    msg = "Sales alert: %s completed an order for %s %s totalling %s ISK" % (order['whoName'], order['volEntered'], market_id_to_name[str(order['typeID']), totalPrice])
 
                 queued_messages.append(msg)
 
